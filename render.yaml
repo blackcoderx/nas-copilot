@@ -1,0 +1,20 @@
+services:
+  - type: web
+    name: nas-copilot-api
+    runtime: python
+    rootDir: backend
+    buildCommand: pip install -e .
+    startCommand: uvicorn nascopilot.main:app --host 0.0.0.0 --port $PORT
+    envVars:
+      - key: DATABASE_URL
+        sync: false
+      - key: OLLAMA_BASE_URL
+        value: https://ollama.com
+      - key: OLLAMA_MODEL
+        value: kimi-k2.5:cloud
+      - key: OLLAMA_API_KEY
+        sync: false
+      - key: ORS_API_KEY
+        sync: false
+      - key: CORS_ORIGINS
+        sync: false

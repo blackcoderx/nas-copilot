@@ -5,8 +5,9 @@ class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8")
 
     database_url: str
-    ollama_base_url: str = "http://localhost:11434"
-    ollama_model: str = "llama3.2"
+    ollama_base_url: str = "https://ollama.com"
+    ollama_model: str = "kimi-k2.5:cloud"
+    ollama_api_key: str = ""
     ors_api_key: str = ""
     cors_origins: str = "http://localhost:4321"
 

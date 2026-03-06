@@ -1,11 +1,14 @@
 from contextlib import asynccontextmanager
 from collections.abc import AsyncIterator
+from pathlib import Path
 
 import asyncpg
 
 from nascopilot.config import settings
 
 _pool: asyncpg.Pool | None = None
+
+_SCHEMA = (Path(__file__).parent / "db" / "schema.sql").read_text()
 
 
 async def init_pool() -> None:
@@ -16,6 +19,8 @@ async def init_pool() -> None:
         max_size=10,
         statement_cache_size=0,  # required for Neon PgBouncer pooled connections
     )
+    async with _pool.acquire() as conn:
+        await conn.execute(_SCHEMA)
 
 
 async def close_pool() -> None:

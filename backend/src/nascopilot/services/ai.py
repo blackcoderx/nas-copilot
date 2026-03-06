@@ -69,9 +69,13 @@ async def call_ollama(system_msg: str, user_msg: str) -> dict:
             {"role": "user", "content": user_msg},
         ],
     }
+    headers = {}
+    if settings.ollama_api_key:
+        headers["Authorization"] = f"Bearer {settings.ollama_api_key}"
+
     async with httpx.AsyncClient(timeout=120) as client:
         resp = await client.post(
-            f"{settings.ollama_base_url}/api/chat", json=payload
+            f"{settings.ollama_base_url}/api/chat", json=payload, headers=headers
         )
         resp.raise_for_status()
 
