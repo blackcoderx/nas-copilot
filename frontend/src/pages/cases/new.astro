@@ -1,0 +1,169 @@
+---
+import Base from '../../layouts/Base.astro';
+
+const API = import.meta.env.PUBLIC_API_URL ?? 'http://localhost:8000';
+
+let error = '';
+
+if (Astro.request.method === 'POST') {
+  try {
+    const form = await Astro.request.formData();
+    const body = {
+      incident_time: form.get('incident_time'),
+      pickup:        form.get('pickup'),
+      destination:   form.get('destination'),
+      pickup_lat:    form.get('pickup_lat') ? parseFloat(form.get('pickup_lat') as string) : null,
+      pickup_lon:    form.get('pickup_lon') ? parseFloat(form.get('pickup_lon') as string) : null,
+      dest_lat:      form.get('dest_lat')   ? parseFloat(form.get('dest_lat') as string)   : null,
+      dest_lon:      form.get('dest_lon')   ? parseFloat(form.get('dest_lon') as string)   : null,
+      patient_age:   form.get('patient_age') ? parseInt(form.get('patient_age') as string) : null,
+      patient_sex:   form.get('patient_sex') || null,
+      complaint:     form.get('complaint'),
+      vitals:        form.get('vitals'),
+      interventions: form.get('interventions') || null,
+      notes:         form.get('notes') || null,
+    };
+
+    const res = await fetch(`${API}/cases`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    });
+
+    if (res.ok) {
+      const created = await res.json();
+      return Astro.redirect(`/cases/${created.id}`);
+    } else {
+      const err = await res.json().catch(() => ({}));
+      error = err.detail ?? `Server error ${res.status}`;
+    }
+  } catch (e: any) {
+    error = e.message ?? 'Unexpected error';
+  }
+}
+
+// Default to now (GMT) for incident time
+const nowIso = new Date().toISOString().slice(0, 16);
+---
+
+<Base title="New Case">
+  <div class="page">
+    <div style="margin-bottom:24px;">
+      <a href="/" style="font-size:0.8rem; color:var(--charcoal-muted); display:inline-flex; align-items:center; gap:4px; margin-bottom:12px;">
+        ← Back
+      </a>
+      <h1>New Case</h1>
+      <p style="font-size:0.85rem; color:var(--charcoal-muted); margin-top:4px;">
+        Fill in the incident and patient details. All fields marked * are required.
+      </p>
+    </div>
+
+    {error && (
+      <div style="background:var(--red-bg); color:var(--red-text); border:1px solid #fecaca; border-radius:var(--radius-card); padding:14px 18px; margin-bottom:20px; font-size:0.85rem;">
+        {error}
+      </div>
+    )}
+
+    <form method="POST">
+      <!-- Incident Details -->
+      <div class="card" style="margin-bottom:16px;">
+        <div class="card-header"><h2>Incident Details</h2></div>
+        <div class="card-body">
+          <div class="form-group">
+            <label class="form-label">Incident Time *</label>
+            <input class="form-input" type="datetime-local" name="incident_time" value={nowIso} required />
+          </div>
+          <div class="form-row">
+            <div class="form-group" style="margin-bottom:0;">
+              <label class="form-label">Pickup Facility *</label>
+              <input class="form-input" type="text" name="pickup" placeholder="e.g. Tamale Teaching Hospital" required />
+            </div>
+            <div class="form-group" style="margin-bottom:0;">
+              <label class="form-label">Destination Facility *</label>
+              <input class="form-input" type="text" name="destination" placeholder="e.g. Korle Bu Teaching Hospital" required />
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Coordinates -->
+      <div class="card" style="margin-bottom:16px;">
+        <div class="card-header">
+          <h2>Coordinates <span style="font-weight:400; color:var(--charcoal-muted); font-size:0.8rem;">(optional — enables route + weather)</span></h2>
+        </div>
+        <div class="card-body">
+          <div class="form-row">
+            <div class="form-group" style="margin-bottom:0;">
+              <label class="form-label">Pickup Latitude</label>
+              <input class="form-input" type="number" step="any" name="pickup_lat" placeholder="9.407" />
+            </div>
+            <div class="form-group" style="margin-bottom:0;">
+              <label class="form-label">Pickup Longitude</label>
+              <input class="form-input" type="number" step="any" name="pickup_lon" placeholder="-0.853" />
+            </div>
+          </div>
+          <div class="form-row" style="margin-top:12px;">
+            <div class="form-group" style="margin-bottom:0;">
+              <label class="form-label">Destination Latitude</label>
+              <input class="form-input" type="number" step="any" name="dest_lat" placeholder="5.560" />
+            </div>
+            <div class="form-group" style="margin-bottom:0;">
+              <label class="form-label">Destination Longitude</label>
+              <input class="form-input" type="number" step="any" name="dest_lon" placeholder="-0.205" />
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Patient -->
+      <div class="card" style="margin-bottom:16px;">
+        <div class="card-header"><h2>Patient</h2></div>
+        <div class="card-body">
+          <div class="form-row">
+            <div class="form-group" style="margin-bottom:0;">
+              <label class="form-label">Approximate Age</label>
+              <input class="form-input" type="number" name="patient_age" placeholder="45" min="0" max="120" />
+            </div>
+            <div class="form-group" style="margin-bottom:0;">
+              <label class="form-label">Sex</label>
+              <select class="form-select" name="patient_sex">
+                <option value="">— Select —</option>
+                <option value="Male">Male</option>
+                <option value="Female">Female</option>
+                <option value="Unknown">Unknown</option>
+              </select>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Clinical -->
+      <div class="card" style="margin-bottom:24px;">
+        <div class="card-header"><h2>Clinical Information</h2></div>
+        <div class="card-body">
+          <div class="form-group">
+            <label class="form-label">Chief Complaint *</label>
+            <input class="form-input" type="text" name="complaint" placeholder="e.g. Severe abdominal pain" required />
+          </div>
+          <div class="form-group">
+            <label class="form-label">Vitals *</label>
+            <input class="form-input" type="text" name="vitals" placeholder="BP 90/60, HR 112, RR 24, SpO₂ 94%" required />
+          </div>
+          <div class="form-group">
+            <label class="form-label">Interventions</label>
+            <textarea class="form-textarea" name="interventions" placeholder="IV access&#10;500ml normal saline bolus" style="min-height:72px;"></textarea>
+          </div>
+          <div class="form-group" style="margin-bottom:0;">
+            <label class="form-label">Additional Notes</label>
+            <textarea class="form-textarea" name="notes" placeholder="Clinical observations, history, relevant context..." style="min-height:80px;"></textarea>
+          </div>
+        </div>
+      </div>
+
+      <div style="display:flex; gap:12px; justify-content:flex-end;">
+        <a href="/" class="btn btn-outline">Cancel</a>
+        <button type="submit" class="btn btn-primary">Save Case →</button>
+      </div>
+    </form>
+  </div>
+</Base>

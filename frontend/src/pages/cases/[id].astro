@@ -1,0 +1,314 @@
+---
+import Base from '../../layouts/Base.astro';
+
+const API = import.meta.env.PUBLIC_API_URL ?? 'http://localhost:8000';
+const { id } = Astro.params;
+
+let data: any = null;
+let fetchError = '';
+
+try {
+  const res = await fetch(`${API}/cases/${id}`);
+  if (res.ok) data = await res.json();
+  else fetchError = res.status === 404 ? 'Case not found' : `API error ${res.status}`;
+} catch {
+  fetchError = 'Could not reach backend';
+}
+
+const c = data?.case;
+const gen = data?.latest_generation;
+const flags: any[] = gen?.flags ?? [];
+
+function fmtDate(iso: string) {
+  return new Date(iso).toLocaleString('en-GB', {
+    day: '2-digit', month: 'short', year: 'numeric',
+    hour: '2-digit', minute: '2-digit',
+  });
+}
+
+const route = gen?.route_json;
+const weather = gen?.weather_json;
+const facilities: any[] = gen?.facilities_json ?? [];
+
+function wxLine(wx: any) {
+  if (!wx) return 'Unavailable';
+  return `${wx.condition ?? '?'} · ${wx.temperature_c ?? '?'}°C · Wind ${wx.wind_kmh ?? '?'} km/h`;
+}
+
+const severityOrder: Record<string, number> = { high: 0, medium: 1, low: 2 };
+const sortedFlags = [...flags].sort((a, b) =>
+  (severityOrder[a.severity] ?? 9) - (severityOrder[b.severity] ?? 9)
+);
+
+const hasOps = route || weather?.pickup || weather?.destination || facilities.length > 0;
+---
+
+<Base title={c ? c.complaint : 'Case'}>
+  <div class="page">
+    {fetchError && (
+      <div style="background:var(--red-bg); color:var(--red-text); border:1px solid #fecaca; border-radius:var(--radius-card); padding:14px 18px; font-size:0.85rem;">
+        {fetchError}
+      </div>
+    )}
+
+    {c && (
+      <>
+        <!-- Header -->
+        <div style="display:flex; align-items:flex-start; justify-content:space-between; gap:16px; margin-bottom:24px; flex-wrap:wrap;">
+          <div>
+            <a href="/" style="font-size:0.8rem; color:var(--charcoal-muted); display:inline-flex; align-items:center; gap:4px; margin-bottom:8px;">
+              ← Dashboard
+            </a>
+            <div style="display:flex; align-items:center; gap:10px;">
+              <h1 style="font-size:1.2rem;">{c.complaint}</h1>
+              <span class={`badge badge-${c.status.toLowerCase()}`}>{c.status}</span>
+            </div>
+            <div style="font-size:0.8rem; color:var(--charcoal-muted); margin-top:4px;">
+              {c.pickup} → {c.destination} · {fmtDate(c.created_at)}
+            </div>
+          </div>
+          <div style="display:flex; gap:8px; flex-wrap:wrap;">
+            {c.status !== 'FINAL' && (
+              <button
+                id="btn-generate"
+                class="btn btn-generate"
+                onclick={`handleGenerate('${id}')`}
+              >
+                <span id="gen-label">Generate PCR</span>
+                <span id="gen-spinner" class="spinner" style="display:none;"></span>
+              </button>
+            )}
+            {c.status !== 'FINAL' && (
+              <button class="btn btn-outline" onclick={`handleFinalize('${id}')`}>
+                Finalize
+              </button>
+            )}
+            <a href={`${API}/cases/${id}/export`} class="btn btn-outline" target="_blank">
+              Export JSON
+            </a>
+          </div>
+        </div>
+
+        <!-- Error banner (JS populated) -->
+        <div id="action-error" style="display:none; background:var(--red-bg); color:var(--red-text); border:1px solid #fecaca; border-radius:var(--radius-card); padding:12px 16px; margin-bottom:16px; font-size:0.84rem;"></div>
+
+        <div style="display:flex; flex-direction:column; gap:16px;">
+
+          <!-- Case Summary -->
+          <div class="card">
+            <div class="card-header"><h2>Case Summary</h2></div>
+            <div class="card-body" style="display:grid; grid-template-columns:1fr 1fr; gap:12px 24px;">
+              <div>
+                <div class="form-label">Incident Time</div>
+                <div style="font-size:0.875rem;">{fmtDate(c.incident_time)}</div>
+              </div>
+              <div>
+                <div class="form-label">Patient</div>
+                <div style="font-size:0.875rem;">{c.patient_age ? `${c.patient_age}y` : '?'} · {c.patient_sex ?? 'Unknown sex'}</div>
+              </div>
+              <div>
+                <div class="form-label">Vitals</div>
+                <div style="font-size:0.875rem;">{c.vitals}</div>
+              </div>
+              {c.interventions && (
+                <div>
+                  <div class="form-label">Interventions</div>
+                  <div style="font-size:0.875rem; white-space:pre-line;">{c.interventions}</div>
+                </div>
+              )}
+              {c.notes && (
+                <div style="grid-column:1/-1;">
+                  <div class="form-label">Notes</div>
+                  <div style="font-size:0.875rem;">{c.notes}</div>
+                </div>
+              )}
+            </div>
+          </div>
+
+          <!-- PCR Output -->
+          <div id="pcr-card" class="card fade-in">
+            <div class="card-header">
+              <h2>Patient Care Report</h2>
+              {gen && (
+                <div style="display:flex; align-items:center; gap:10px;">
+                  <span style="font-size:0.75rem; color:var(--charcoal-muted);">{gen.model_name} · {fmtDate(gen.created_at)}</span>
+                  <button
+                    class="btn btn-outline"
+                    style="padding:4px 10px; font-size:0.75rem;"
+                    onclick="copyPCR()"
+                  >Copy</button>
+                </div>
+              )}
+            </div>
+            <div class="card-body">
+              {gen ? (
+                <pre id="pcr-text" style="white-space:pre-wrap; font-family:'Inter',sans-serif; font-size:0.875rem; line-height:1.7; color:var(--charcoal);">{gen.pcr_text}</pre>
+              ) : (
+                <div class="empty" style="padding:32px;">
+                  No PCR generated yet. Click <strong>Generate PCR</strong> above.
+                </div>
+              )}
+            </div>
+          </div>
+
+          <!-- Quality Flags -->
+          {gen && (
+            <div class="card fade-in" style="animation-delay:60ms;">
+              <div class="card-header">
+                <h2>Quality Flags</h2>
+                <span style="font-size:0.8rem; color:var(--charcoal-muted);">{sortedFlags.length} item{sortedFlags.length !== 1 ? 's' : ''}</span>
+              </div>
+              <div class="card-body" style="padding:12px 20px;">
+                {sortedFlags.length === 0 ? (
+                  <div style="color:var(--charcoal-muted); font-size:0.85rem; padding:8px 0;">
+                    No flags — documentation looks complete.
+                  </div>
+                ) : (
+                  <div style="display:flex; flex-direction:column; gap:8px;">
+                    {sortedFlags.map((f: any, i: number) => {
+                      const bg   = f.severity === 'high'   ? 'var(--red-bg)'   : f.severity === 'medium' ? 'var(--amber-bg)'   : 'var(--green-soft)';
+                      const col  = f.severity === 'high'   ? 'var(--red-text)' : f.severity === 'medium' ? 'var(--amber-text)' : 'var(--green-dark)';
+                      const bord = f.severity === 'high'   ? '#fecaca'         : f.severity === 'medium' ? '#fde68a'          : '#c3ddd4';
+                      return (
+                        <div
+                          class="fade-in"
+                          style={`background:${bg}; border-left:3px solid ${bord}; border-radius:var(--radius-input); padding:10px 14px; animation-delay:${80 + i*40}ms;`}
+                        >
+                          <div style={`font-size:0.75rem; font-weight:600; text-transform:uppercase; letter-spacing:0.05em; color:${col}; margin-bottom:3px;`}>
+                            {f.severity}
+                          </div>
+                          <div style="font-size:0.875rem; font-weight:500; margin-bottom:2px;">{f.issue}</div>
+                          <div style="font-size:0.8rem; color:var(--charcoal-muted);">{f.action}</div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+
+          <!-- Recommendation -->
+          {gen?.recommendation && (
+            <div class="card fade-in" style="animation-delay:120ms;">
+              <div class="card-header"><h2>Transfer Recommendation</h2></div>
+              <div class="card-body">
+                <p style="font-size:0.875rem; line-height:1.7;">{gen.recommendation}</p>
+              </div>
+            </div>
+          )}
+
+          <!-- Ops Snapshot -->
+          {hasOps && (
+            <div class="card fade-in" style="animation-delay:160ms;">
+              <div class="card-header"><h2>Operational Context</h2></div>
+              <div class="card-body">
+                <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(220px,1fr)); gap:20px;">
+                  <!-- Route -->
+                  <div>
+                    <div class="form-label" style="margin-bottom:8px;">Route</div>
+                    {route ? (
+                      <div>
+                        <div style="font-size:1.1rem; font-weight:600;">{route.duration_min} min</div>
+                        <div style="font-size:0.8rem; color:var(--charcoal-muted);">{route.distance_km} km driving</div>
+                      </div>
+                    ) : (
+                      <div style="font-size:0.85rem; color:var(--charcoal-muted);">Unavailable</div>
+                    )}
+                  </div>
+                  <!-- Weather -->
+                  <div>
+                    <div class="form-label" style="margin-bottom:8px;">Weather</div>
+                    <div style="display:flex; flex-direction:column; gap:6px; font-size:0.83rem;">
+                      <div><span style="color:var(--charcoal-muted);">Pickup:</span> {wxLine(weather?.pickup)}</div>
+                      <div><span style="color:var(--charcoal-muted);">Destination:</span> {wxLine(weather?.destination)}</div>
+                    </div>
+                  </div>
+                  <!-- Facilities -->
+                  {facilities.length > 0 && (
+                    <div>
+                      <div class="form-label" style="margin-bottom:8px;">Nearby Facilities</div>
+                      <div style="display:flex; flex-direction:column; gap:4px;">
+                        {facilities.map((f: any) => (
+                          <div style="font-size:0.82rem;">
+                            <span style="font-weight:500;">{f.name}</span>
+                            <span style="color:var(--charcoal-muted);"> · {f.type}</span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
+          )}
+
+        </div>
+      </>
+    )}
+  </div>
+</Base>
+
+<script>
+  const API = import.meta.env.PUBLIC_API_URL ?? 'http://localhost:8000';
+
+  async function handleGenerate(id: string) {
+    const btn = document.getElementById('btn-generate') as HTMLButtonElement;
+    const label = document.getElementById('gen-label')!;
+    const spinner = document.getElementById('gen-spinner')!;
+    const errBanner = document.getElementById('action-error')!;
+
+    btn.disabled = true;
+    label.textContent = 'Generating…';
+    spinner.style.display = 'inline-block';
+    errBanner.style.display = 'none';
+
+    try {
+      const res = await fetch(`${API}/cases/${id}/generate`, { method: 'POST' });
+      if (res.ok) {
+        window.location.reload();
+      } else {
+        const err = await res.json().catch(() => ({}));
+        errBanner.textContent = err.detail ?? `Generation failed (${res.status})`;
+        errBanner.style.display = 'block';
+      }
+    } catch (e: any) {
+      errBanner.textContent = e.message ?? 'Could not reach backend';
+      errBanner.style.display = 'block';
+    } finally {
+      btn.disabled = false;
+      label.textContent = 'Generate PCR';
+      spinner.style.display = 'none';
+    }
+  }
+
+  async function handleFinalize(id: string) {
+    const errBanner = document.getElementById('action-error')!;
+    errBanner.style.display = 'none';
+    try {
+      const res = await fetch(`${API}/cases/${id}/finalize`, { method: 'PATCH' });
+      if (res.ok) window.location.reload();
+      else {
+        const err = await res.json().catch(() => ({}));
+        errBanner.textContent = err.detail ?? `Finalize failed (${res.status})`;
+        errBanner.style.display = 'block';
+      }
+    } catch (e: any) {
+      errBanner.textContent = e.message ?? 'Could not reach backend';
+      errBanner.style.display = 'block';
+    }
+  }
+
+  function copyPCR() {
+    const text = document.getElementById('pcr-text')?.textContent ?? '';
+    navigator.clipboard.writeText(text).then(() => {
+      const btn = document.querySelector('[onclick="copyPCR()"]') as HTMLButtonElement;
+      if (btn) { btn.textContent = 'Copied!'; setTimeout(() => { btn.textContent = 'Copy'; }, 1800); }
+    });
+  }
+
+  // expose to inline onclick
+  (window as any).handleGenerate = handleGenerate;
+  (window as any).handleFinalize = handleFinalize;
+  (window as any).copyPCR = copyPCR;
+</script>

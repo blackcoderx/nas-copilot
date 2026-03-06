@@ -1,0 +1,90 @@
+---
+import Base from '../layouts/Base.astro';
+
+const API = import.meta.env.PUBLIC_API_URL ?? 'http://localhost:8000';
+
+let cases: any[] = [];
+let error = '';
+
+try {
+  const res = await fetch(`${API}/cases`);
+  if (res.ok) cases = await res.json();
+  else error = `API error ${res.status}`;
+} catch (e) {
+  error = 'Could not reach backend';
+}
+
+function timeAgo(iso: string) {
+  const diff = Date.now() - new Date(iso).getTime();
+  const m = Math.floor(diff / 60000);
+  if (m < 1) return 'just now';
+  if (m < 60) return `${m}m ago`;
+  const h = Math.floor(m / 60);
+  if (h < 24) return `${h}h ago`;
+  return `${Math.floor(h / 24)}d ago`;
+}
+---
+
+<Base title="Dashboard">
+  <div class="page">
+    <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:28px;">
+      <div>
+        <h1>Dashboard</h1>
+        <p style="color:var(--charcoal-muted); font-size:0.85rem; margin-top:4px;">
+          Ghana National Ambulance Service — EMS documentation assistant
+        </p>
+      </div>
+      <a href="/cases/new" class="btn btn-generate">+ New Case</a>
+    </div>
+
+    {error && (
+      <div style="background:var(--red-bg); color:var(--red-text); border:1px solid #fecaca; border-radius:var(--radius-card); padding:14px 18px; margin-bottom:24px; font-size:0.85rem;">
+        {error}
+      </div>
+    )}
+
+    {cases.length === 0 && !error ? (
+      <div class="card">
+        <div class="empty">
+          <div style="font-size:2rem; margin-bottom:12px;">📋</div>
+          <div style="font-weight:500; margin-bottom:6px;">No cases yet</div>
+          <div>Create your first case to get started</div>
+          <a href="/cases/new" class="btn btn-primary" style="margin-top:20px; display:inline-flex;">Create Case</a>
+        </div>
+      </div>
+    ) : (
+      <div>
+        <div style="font-size:0.8rem; color:var(--charcoal-muted); margin-bottom:12px;">
+          {cases.length} case{cases.length !== 1 ? 's' : ''}
+        </div>
+        <div style="display:flex; flex-direction:column; gap:8px;">
+          {cases.map((c: any, i: number) => (
+            <a
+              href={`/cases/${c.id}`}
+              class="card fade-in"
+              style={`text-decoration:none; animation-delay:${i * 40}ms; display:block;`}
+            >
+              <div style="display:flex; align-items:center; gap:16px; padding:14px 18px;">
+                <div
+                  style={`width:3px; align-self:stretch; border-radius:2px; flex-shrink:0; background:${c.status === 'FINAL' ? 'var(--green)' : 'var(--border)'}`}
+                />
+                <div style="flex:1; min-width:0;">
+                  <div style="font-weight:500; font-size:0.9rem; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">
+                    {c.complaint}
+                  </div>
+                  <div style="font-size:0.78rem; color:var(--charcoal-muted); margin-top:2px;">
+                    {c.pickup} → {c.destination}
+                  </div>
+                </div>
+                <div style="display:flex; align-items:center; gap:10px; flex-shrink:0;">
+                  <span class={`badge badge-${c.status.toLowerCase()}`}>{c.status}</span>
+                  <span style="font-size:0.78rem; color:var(--charcoal-muted);">{timeAgo(c.created_at)}</span>
+                </div>
+              </div>
+            </a>
+          ))}
+        </div>
+      </div>
+    )}
+  </div>
+</Base>
