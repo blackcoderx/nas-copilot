@@ -5,6 +5,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from nascopilot.config import settings
 from nascopilot.database import init_pool, close_pool
+from nascopilot.routers.auth import router as auth_router
 from nascopilot.routers.cases import router as cases_router
 
 
@@ -25,6 +26,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+app.include_router(auth_router)
 app.include_router(cases_router)
 
 

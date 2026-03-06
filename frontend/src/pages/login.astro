@@ -1,0 +1,146 @@
+---
+const API = import.meta.env.PUBLIC_API_URL ?? 'http://localhost:8000';
+let error = '';
+
+if (Astro.request.method === 'POST') {
+  const form = await Astro.request.formData();
+  const username = form.get('username') as string;
+  const password = form.get('password') as string;
+
+  try {
+    const res = await fetch(`${API}/auth/login`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ username, password }),
+    });
+
+    if (res.ok) {
+      const { access_token } = await res.json();
+      Astro.cookies.set('nas_token', access_token, {
+        path: '/',
+        maxAge: 60 * 60 * 24,
+        sameSite: 'lax',
+        secure: import.meta.env.PROD,
+      });
+      return Astro.redirect('/dashboard');
+    } else {
+      error = 'Invalid username or password';
+    }
+  } catch {
+    error = 'Could not reach server';
+  }
+}
+---
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Sign In — NAS Copilot GH</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap" rel="stylesheet" />
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    :root {
+      --bg: #F9F9F8; --surface: #fff;
+      --charcoal: #1C1C1E; --charcoal-muted: #4A4A4F;
+      --border: #E4E4E7; --green: #3D8B6E; --green-dark: #2E6D55; --green-soft: #EAF4EF;
+      --red-bg: #FEF2F2; --red-text: #B91C1C;
+    }
+    html, body {
+      font-family: 'Inter', sans-serif; background: var(--bg);
+      color: var(--charcoal); min-height: 100vh;
+      display: flex; flex-direction: column;
+    }
+    a { color: inherit; text-decoration: none; }
+
+    nav {
+      background: var(--charcoal); padding: 0 32px; height: 56px;
+      display: flex; align-items: center; justify-content: space-between;
+    }
+    .brand { color: #fff; font-weight: 700; font-size: 1rem; }
+    .brand span { color: var(--green); }
+    .nav-back { color: rgba(255,255,255,0.55); font-size: 0.85rem; transition: color 150ms; }
+    .nav-back:hover { color: #fff; }
+
+    .login-wrap {
+      flex: 1; display: flex; align-items: center; justify-content: center;
+      padding: 40px 16px;
+    }
+    .login-card {
+      background: var(--surface); border: 1px solid var(--border);
+      border-radius: 12px; box-shadow: 0 4px 24px rgba(0,0,0,0.07);
+      padding: 40px; width: 100%; max-width: 400px;
+    }
+    .login-header { text-align: center; margin-bottom: 32px; }
+    .login-header h1 { font-size: 1.3rem; font-weight: 700; margin-bottom: 6px; }
+    .login-header p { font-size: 0.85rem; color: var(--charcoal-muted); }
+
+    .form-group { display: flex; flex-direction: column; gap: 5px; margin-bottom: 16px; }
+    .form-label { font-size: 0.8rem; font-weight: 500; color: var(--charcoal-muted); }
+    .form-input {
+      background: var(--bg); border: 1px solid var(--border);
+      border-radius: 6px; padding: 10px 12px;
+      font-size: 0.9rem; color: var(--charcoal); font-family: inherit;
+      transition: border-color 150ms; width: 100%;
+    }
+    .form-input:focus { outline: none; border-color: var(--green); }
+
+    .btn-submit {
+      width: 100%; padding: 11px; border-radius: 7px;
+      background: var(--green); color: #fff; border: none;
+      font-size: 0.95rem; font-weight: 500; font-family: inherit;
+      cursor: pointer; transition: background 150ms, transform 100ms;
+      margin-top: 4px;
+    }
+    .btn-submit:hover { background: var(--green-dark); transform: translateY(-1px); }
+    .btn-submit:active { transform: none; }
+
+    .error {
+      background: var(--red-bg); color: var(--red-text);
+      border: 1px solid #fecaca; border-radius: 6px;
+      padding: 10px 14px; font-size: 0.84rem; margin-bottom: 20px;
+    }
+    .login-footer {
+      text-align: center; margin-top: 20px;
+      font-size: 0.8rem; color: var(--charcoal-muted);
+    }
+
+    @keyframes fadeUp { from { opacity:0; transform:translateY(10px); } to { opacity:1; transform:none; } }
+    .login-card { animation: fadeUp 300ms ease both; }
+  </style>
+</head>
+<body>
+  <nav>
+    <a href="/" class="brand">NAS<span> Copilot</span></a>
+    <a href="/" class="nav-back">← Back</a>
+  </nav>
+
+  <div class="login-wrap">
+    <div class="login-card">
+      <div class="login-header">
+        <h1>Sign In</h1>
+        <p>Ghana National Ambulance Service</p>
+      </div>
+
+      {error && <div class="error">{error}</div>}
+
+      <form method="POST">
+        <div class="form-group">
+          <label class="form-label" for="username">Username</label>
+          <input class="form-input" id="username" type="text" name="username" placeholder="Enter your username" required autocomplete="username" />
+        </div>
+        <div class="form-group">
+          <label class="form-label" for="password">Password</label>
+          <input class="form-input" id="password" type="password" name="password" placeholder="Enter your password" required autocomplete="current-password" />
+        </div>
+        <button type="submit" class="btn-submit">Sign In</button>
+      </form>
+
+      <div class="login-footer">
+        Don't have an account? Contact your administrator.
+      </div>
+    </div>
+  </div>
+</body>
+</html>

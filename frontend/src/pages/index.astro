@@ -1,90 +1,197 @@
 ---
-import Base from '../layouts/Base.astro';
-
-const API = import.meta.env.PUBLIC_API_URL ?? 'http://localhost:8000';
-
-let cases: any[] = [];
-let error = '';
-
-try {
-  const res = await fetch(`${API}/cases`);
-  if (res.ok) cases = await res.json();
-  else error = `API error ${res.status}`;
-} catch (e) {
-  error = 'Could not reach backend';
-}
-
-function timeAgo(iso: string) {
-  const diff = Date.now() - new Date(iso).getTime();
-  const m = Math.floor(diff / 60000);
-  if (m < 1) return 'just now';
-  if (m < 60) return `${m}m ago`;
-  const h = Math.floor(m / 60);
-  if (h < 24) return `${h}h ago`;
-  return `${Math.floor(h / 24)}d ago`;
-}
 ---
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>NAS Copilot GH — EMS Documentation Assistant</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet" />
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    :root {
+      --bg: #F9F9F8; --surface: #fff;
+      --charcoal: #1C1C1E; --charcoal-mid: #2C2C2E; --charcoal-muted: #4A4A4F;
+      --border: #E4E4E7; --green: #3D8B6E; --green-dark: #2E6D55; --green-soft: #EAF4EF;
+    }
+    html, body { font-family: 'Inter', sans-serif; background: var(--bg); color: var(--charcoal); line-height: 1.6; }
+    a { color: inherit; text-decoration: none; }
 
-<Base title="Dashboard">
-  <div class="page">
-    <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:28px;">
-      <div>
-        <h1>Dashboard</h1>
-        <p style="color:var(--charcoal-muted); font-size:0.85rem; margin-top:4px;">
-          Ghana National Ambulance Service — EMS documentation assistant
-        </p>
-      </div>
-      <a href="/cases/new" class="btn btn-generate">+ New Case</a>
+    /* Nav */
+    nav {
+      background: var(--charcoal);
+      padding: 0 32px;
+      height: 56px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      position: sticky; top: 0; z-index: 10;
+    }
+    .brand { color: #fff; font-weight: 700; font-size: 1rem; letter-spacing: 0.01em; }
+    .brand span { color: var(--green); }
+    .nav-cta {
+      background: var(--green); color: #fff;
+      padding: 7px 18px; border-radius: 6px;
+      font-size: 0.85rem; font-weight: 500;
+      transition: background 150ms;
+    }
+    .nav-cta:hover { background: var(--green-dark); }
+
+    /* Hero */
+    .hero {
+      max-width: 720px; margin: 0 auto;
+      padding: 96px 24px 80px;
+      text-align: center;
+    }
+    .hero-tag {
+      display: inline-block;
+      background: var(--green-soft); color: var(--green-dark);
+      border: 1px solid #c3ddd4; border-radius: 20px;
+      font-size: 0.75rem; font-weight: 500; letter-spacing: 0.04em;
+      padding: 4px 12px; margin-bottom: 24px; text-transform: uppercase;
+    }
+    .hero h1 {
+      font-size: clamp(2rem, 5vw, 3rem);
+      font-weight: 700; line-height: 1.2;
+      color: var(--charcoal); margin-bottom: 20px;
+    }
+    .hero h1 span { color: var(--green); }
+    .hero p {
+      font-size: 1.05rem; color: var(--charcoal-muted);
+      max-width: 540px; margin: 0 auto 36px;
+    }
+    .hero-actions { display: flex; gap: 12px; justify-content: center; flex-wrap: wrap; }
+    .btn-hero {
+      padding: 12px 28px; border-radius: 7px;
+      font-size: 0.95rem; font-weight: 500;
+      transition: background 150ms, transform 100ms;
+    }
+    .btn-hero:hover { transform: translateY(-1px); }
+    .btn-primary { background: var(--green); color: #fff; }
+    .btn-primary:hover { background: var(--green-dark); }
+    .btn-outline { background: transparent; color: var(--charcoal-muted); border: 1px solid var(--border); }
+    .btn-outline:hover { border-color: var(--charcoal-muted); }
+
+    /* Features */
+    .features {
+      max-width: 960px; margin: 0 auto;
+      padding: 0 24px 96px;
+    }
+    .features-label {
+      text-align: center;
+      font-size: 0.75rem; font-weight: 600; text-transform: uppercase;
+      letter-spacing: 0.08em; color: var(--charcoal-muted); margin-bottom: 48px;
+    }
+    .features-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+      gap: 20px;
+    }
+    .feature-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 24px;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.05);
+    }
+    .feature-icon {
+      width: 40px; height: 40px; border-radius: 8px;
+      background: var(--green-soft);
+      display: flex; align-items: center; justify-content: center;
+      font-size: 1.2rem; margin-bottom: 14px;
+    }
+    .feature-card h3 { font-size: 0.95rem; font-weight: 600; margin-bottom: 6px; }
+    .feature-card p { font-size: 0.84rem; color: var(--charcoal-muted); line-height: 1.6; }
+
+    /* CTA strip */
+    .cta-strip {
+      background: var(--charcoal);
+      text-align: center; padding: 72px 24px;
+    }
+    .cta-strip h2 { color: #fff; font-size: 1.5rem; font-weight: 700; margin-bottom: 12px; }
+    .cta-strip p { color: rgba(255,255,255,0.55); font-size: 0.9rem; margin-bottom: 28px; }
+
+    /* Footer */
+    footer {
+      text-align: center; padding: 24px;
+      font-size: 0.78rem; color: var(--charcoal-muted);
+      border-top: 1px solid var(--border);
+    }
+
+    @keyframes fadeUp { from { opacity:0; transform:translateY(12px); } to { opacity:1; transform:none; } }
+    .fade-up { animation: fadeUp 400ms ease both; }
+  </style>
+</head>
+<body>
+
+  <nav>
+    <span class="brand">NAS<span> Copilot</span></span>
+    <a href="/login" class="nav-cta">Sign In</a>
+  </nav>
+
+  <!-- Hero -->
+  <section class="hero fade-up">
+    <div class="hero-tag">Ghana National Ambulance Service</div>
+    <h1>Better EMS documentation,<br /><span>faster.</span></h1>
+    <p>
+      Type a patient case once. Get a clean Patient Care Report, quality flags,
+      and operational recommendations — instantly.
+    </p>
+    <div class="hero-actions">
+      <a href="/login" class="btn-hero btn-primary">Get Started</a>
+      <a href="#features" class="btn-hero btn-outline">Learn More</a>
     </div>
+  </section>
 
-    {error && (
-      <div style="background:var(--red-bg); color:var(--red-text); border:1px solid #fecaca; border-radius:var(--radius-card); padding:14px 18px; margin-bottom:24px; font-size:0.85rem;">
-        {error}
+  <!-- Features -->
+  <section class="features" id="features">
+    <p class="features-label">What NAS Copilot does</p>
+    <div class="features-grid">
+      <div class="feature-card fade-up" style="animation-delay:60ms">
+        <div class="feature-icon">📋</div>
+        <h3>PCR Generation</h3>
+        <p>AI turns your typed case into a properly formatted Patient Care Report narrative — clean, consistent, and ready to copy.</p>
       </div>
-    )}
+      <div class="feature-card fade-up" style="animation-delay:120ms">
+        <div class="feature-icon">⚠️</div>
+        <h3>Quality Flags</h3>
+        <p>Automatically identifies missing allergies, pain scores, vital reassessments, and other documentation gaps before sign-off.</p>
+      </div>
+      <div class="feature-card fade-up" style="animation-delay:180ms">
+        <div class="feature-icon">🗺️</div>
+        <h3>Operational Context</h3>
+        <p>Route ETA to destination, weather conditions at pickup and drop-off, and nearby health facilities — all in one view.</p>
+      </div>
+      <div class="feature-card fade-up" style="animation-delay:240ms">
+        <div class="feature-icon">🔄</div>
+        <h3>Regenerate & Improve</h3>
+        <p>Fix missing items, regenerate the PCR, and watch quality flags clear. Full history of every generation is saved.</p>
+      </div>
+      <div class="feature-card fade-up" style="animation-delay:300ms">
+        <div class="feature-icon">📊</div>
+        <h3>Audit Trail</h3>
+        <p>Every case and generation is stored in the database — giving QA teams a reliable record for review and improvement.</p>
+      </div>
+      <div class="feature-card fade-up" style="animation-delay:360ms">
+        <div class="feature-icon">📤</div>
+        <h3>Export</h3>
+        <p>Finalize a case and export the full report as structured JSON — ready for records, printing, or downstream systems.</p>
+      </div>
+    </div>
+  </section>
 
-    {cases.length === 0 && !error ? (
-      <div class="card">
-        <div class="empty">
-          <div style="font-size:2rem; margin-bottom:12px;">📋</div>
-          <div style="font-weight:500; margin-bottom:6px;">No cases yet</div>
-          <div>Create your first case to get started</div>
-          <a href="/cases/new" class="btn btn-primary" style="margin-top:20px; display:inline-flex;">Create Case</a>
-        </div>
-      </div>
-    ) : (
-      <div>
-        <div style="font-size:0.8rem; color:var(--charcoal-muted); margin-bottom:12px;">
-          {cases.length} case{cases.length !== 1 ? 's' : ''}
-        </div>
-        <div style="display:flex; flex-direction:column; gap:8px;">
-          {cases.map((c: any, i: number) => (
-            <a
-              href={`/cases/${c.id}`}
-              class="card fade-in"
-              style={`text-decoration:none; animation-delay:${i * 40}ms; display:block;`}
-            >
-              <div style="display:flex; align-items:center; gap:16px; padding:14px 18px;">
-                <div
-                  style={`width:3px; align-self:stretch; border-radius:2px; flex-shrink:0; background:${c.status === 'FINAL' ? 'var(--green)' : 'var(--border)'}`}
-                />
-                <div style="flex:1; min-width:0;">
-                  <div style="font-weight:500; font-size:0.9rem; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">
-                    {c.complaint}
-                  </div>
-                  <div style="font-size:0.78rem; color:var(--charcoal-muted); margin-top:2px;">
-                    {c.pickup} → {c.destination}
-                  </div>
-                </div>
-                <div style="display:flex; align-items:center; gap:10px; flex-shrink:0;">
-                  <span class={`badge badge-${c.status.toLowerCase()}`}>{c.status}</span>
-                  <span style="font-size:0.78rem; color:var(--charcoal-muted);">{timeAgo(c.created_at)}</span>
-                </div>
-              </div>
-            </a>
-          ))}
-        </div>
-      </div>
-    )}
-  </div>
-</Base>
+  <!-- CTA -->
+  <section class="cta-strip">
+    <h2>Ready to improve your documentation?</h2>
+    <p>Sign in to start creating cases for your team.</p>
+    <a href="/login" class="btn-hero btn-primary">Sign In</a>
+  </section>
+
+  <footer>
+    &copy; {new Date().getFullYear()} NAS Copilot GH &mdash; Ghana National Ambulance Service
+  </footer>
+
+</body>
+</html>

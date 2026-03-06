@@ -203,11 +203,12 @@ const { title = 'NAS Copilot GH' } = Astro.props;
 </head>
 <body>
   <nav class="nav">
-    <span class="nav-brand">NAS<span> Copilot</span></span>
+    <a href="/dashboard" class="nav-brand">NAS<span> Copilot</span></a>
     <div class="nav-links">
-      <a href="/">Dashboard</a>
+      <a href="/dashboard">Dashboard</a>
       <a href="/cases">Cases</a>
       <a href="/cases/new">New Case</a>
+      <a href="/logout" style="color:rgba(255,255,255,0.4);">Sign Out</a>
     </div>
   </nav>
   <slot />

@@ -2,6 +2,7 @@
 import Base from '../../layouts/Base.astro';
 
 const API = import.meta.env.PUBLIC_API_URL ?? 'http://localhost:8000';
+const token = Astro.cookies.get('nas_token')?.value;
 
 let error = '';
 
@@ -26,7 +27,7 @@ if (Astro.request.method === 'POST') {
 
     const res = await fetch(`${API}/cases`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
       body: JSON.stringify(body),
     });
 
@@ -49,7 +50,7 @@ const nowIso = new Date().toISOString().slice(0, 16);
 <Base title="New Case">
   <div class="page">
     <div style="margin-bottom:24px;">
-      <a href="/" style="font-size:0.8rem; color:var(--charcoal-muted); display:inline-flex; align-items:center; gap:4px; margin-bottom:12px;">
+      <a href="/dashboard" style="font-size:0.8rem; color:var(--charcoal-muted); display:inline-flex; align-items:center; gap:4px; margin-bottom:12px;">
         ← Back
       </a>
       <h1>New Case</h1>
@@ -161,7 +162,7 @@ const nowIso = new Date().toISOString().slice(0, 16);
       </div>
 
       <div style="display:flex; gap:12px; justify-content:flex-end;">
-        <a href="/" class="btn btn-outline">Cancel</a>
+        <a href="/dashboard" class="btn btn-outline">Cancel</a>
         <button type="submit" class="btn btn-primary">Save Case →</button>
       </div>
     </form>

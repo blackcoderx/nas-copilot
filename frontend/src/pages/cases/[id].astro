@@ -2,14 +2,18 @@
 import Base from '../../layouts/Base.astro';
 
 const API = import.meta.env.PUBLIC_API_URL ?? 'http://localhost:8000';
+const token = Astro.cookies.get('nas_token')?.value;
 const { id } = Astro.params;
 
 let data: any = null;
 let fetchError = '';
 
 try {
-  const res = await fetch(`${API}/cases/${id}`);
+  const res = await fetch(`${API}/cases/${id}`, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
   if (res.ok) data = await res.json();
+  else if (res.status === 401) return Astro.redirect('/login');
   else fetchError = res.status === 404 ? 'Case not found' : `API error ${res.status}`;
 } catch {
   fetchError = 'Could not reach backend';
@@ -56,7 +60,7 @@ const hasOps = route || weather?.pickup || weather?.destination || facilities.le
         <!-- Header -->
         <div style="display:flex; align-items:flex-start; justify-content:space-between; gap:16px; margin-bottom:24px; flex-wrap:wrap;">
           <div>
-            <a href="/" style="font-size:0.8rem; color:var(--charcoal-muted); display:inline-flex; align-items:center; gap:4px; margin-bottom:8px;">
+            <a href="/dashboard" style="font-size:0.8rem; color:var(--charcoal-muted); display:inline-flex; align-items:center; gap:4px; margin-bottom:8px;">
               ← Dashboard
             </a>
             <div style="display:flex; align-items:center; gap:10px;">
@@ -252,6 +256,10 @@ const hasOps = route || weather?.pickup || weather?.destination || facilities.le
 <script>
   const API = import.meta.env.PUBLIC_API_URL ?? 'http://localhost:8000';
 
+  function getToken(): string {
+    return document.cookie.split(';').find(c => c.trim().startsWith('nas_token='))?.split('=')[1] ?? '';
+  }
+
   async function handleGenerate(id: string) {
     const btn = document.getElementById('btn-generate') as HTMLButtonElement;
     const label = document.getElementById('gen-label')!;
@@ -264,7 +272,7 @@ const hasOps = route || weather?.pickup || weather?.destination || facilities.le
     errBanner.style.display = 'none';
 
     try {
-      const res = await fetch(`${API}/cases/${id}/generate`, { method: 'POST' });
+      const res = await fetch(`${API}/cases/${id}/generate`, { method: 'POST', headers: { Authorization: `Bearer ${getToken()}` } });
       if (res.ok) {
         window.location.reload();
       } else {
@@ -286,7 +294,7 @@ const hasOps = route || weather?.pickup || weather?.destination || facilities.le
     const errBanner = document.getElementById('action-error')!;
     errBanner.style.display = 'none';
     try {
-      const res = await fetch(`${API}/cases/${id}/finalize`, { method: 'PATCH' });
+      const res = await fetch(`${API}/cases/${id}/finalize`, { method: 'PATCH', headers: { Authorization: `Bearer ${getToken()}` } });
       if (res.ok) window.location.reload();
       else {
         const err = await res.json().catch(() => ({}));

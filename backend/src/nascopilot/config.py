@@ -10,6 +10,8 @@ class Settings(BaseSettings):
     ollama_api_key: str = ""
     ors_api_key: str = ""
     cors_origins: str = "http://localhost:4321"
+    jwt_secret: str = "change-me-in-production"
+    jwt_expire_hours: int = 24
 
     @property
     def cors_origins_list(self) -> list[str]:

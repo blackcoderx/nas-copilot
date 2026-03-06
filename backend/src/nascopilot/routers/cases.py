@@ -1,17 +1,18 @@
 import json
 from uuid import UUID
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import JSONResponse
 
 from nascopilot.database import get_conn
 from nascopilot.db import queries
+from nascopilot.dependencies import get_current_user_id
 from nascopilot.models.case import CaseCreate, CaseOut, CaseListItem
 from nascopilot.models.generation import GenerationOut
 from nascopilot.models.flag import QualityFlag
 from nascopilot.services.generate import run_generate
 
-router = APIRouter(prefix="/cases", tags=["cases"])
+router = APIRouter(prefix="/cases", tags=["cases"], dependencies=[Depends(get_current_user_id)])
 
 
 @router.post("", response_model=CaseOut, status_code=201)
