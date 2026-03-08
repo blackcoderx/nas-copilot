@@ -7,7 +7,7 @@ from nascopilot.config import settings
 from nascopilot.db import queries
 from nascopilot.models.generation import GenerationOut
 from nascopilot.models.flag import QualityFlag
-from nascopilot.services.ai import build_prompt, call_ollama
+from nascopilot.services.ai import build_prompt, call_ollama, deterministic_flags
 from nascopilot.services.overpass import get_nearby_facilities
 from nascopilot.services.openroute import get_route_eta
 from nascopilot.services.weather import get_weather
@@ -50,7 +50,14 @@ async def run_generate(conn: asyncpg.Connection, case_id: UUID) -> GenerationOut
 
     pcr_text = ai_result.get("pcr_text", "")
     recommendation = ai_result.get("recommendation")
-    raw_flags = ai_result.get("flags", [])
+
+    # Merge deterministic rule-based flags with AI-generated flags
+    # Deduplicate by issue text so the same gap isn't flagged twice
+    det_flags = deterministic_flags(case)
+    ai_flags  = ai_result.get("flags", [])
+    det_issues = {f["issue"] for f in det_flags}
+    merged = det_flags + [f for f in ai_flags if f.get("issue") not in det_issues]
+    raw_flags = merged
 
     gen_data = {
         "case_id": case_id,

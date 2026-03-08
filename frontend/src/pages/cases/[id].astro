@@ -34,6 +34,22 @@ const route = gen?.route_json;
 const weather = gen?.weather_json;
 const facilities: any[] = gen?.facilities_json ?? [];
 
+function fmtVitals(v: any) {
+  if (!v) return null;
+  const parts: string[] = [];
+  if (v.bp_sys != null && v.bp_dia != null) parts.push(`BP ${v.bp_sys}/${v.bp_dia}`);
+  if (v.hr != null)   parts.push(`HR ${v.hr}`);
+  if (v.rr != null)   parts.push(`RR ${v.rr}`);
+  if (v.spo2 != null) parts.push(`SpO₂ ${v.spo2}%`);
+  if (v.temp_c != null) parts.push(`Temp ${v.temp_c}°C`);
+  if (v.gcs != null)  parts.push(`GCS ${v.gcs}`);
+  if (v.pain != null) parts.push(`Pain ${v.pain}/10`);
+  return parts.join(' · ') || null;
+}
+
+const v1 = c?.vitals_set_1;
+const v2 = c?.vitals_set_2;
+
 function wxLine(wx: any) {
   if (!wx) return 'Unavailable';
   return `${wx.condition ?? '?'} · ${wx.temperature_c ?? '?'}°C · Wind ${wx.wind_kmh ?? '?'} km/h`;
@@ -98,36 +114,174 @@ const hasOps = route || weather?.pickup || weather?.destination || facilities.le
 
         <div style="display:flex; flex-direction:column; gap:16px;">
 
-          <!-- Case Summary -->
+          <!-- Time Chain -->
           <div class="card">
-            <div class="card-header"><h2>Case Summary</h2></div>
+            <div class="card-header"><h2>Call Timeline</h2></div>
+            <div class="card-body" style="display:grid; grid-template-columns:repeat(auto-fit, minmax(180px,1fr)); gap:12px 24px;">
+              {c.dispatch_time && (
+                <div><div class="form-label">Dispatch</div><div style="font-size:0.85rem;">{fmtDate(c.dispatch_time)}</div></div>
+              )}
+              <div><div class="form-label">Incident</div><div style="font-size:0.85rem;">{fmtDate(c.incident_time)}</div></div>
+              {c.on_scene_time && (
+                <div><div class="form-label">On Scene</div><div style="font-size:0.85rem;">{fmtDate(c.on_scene_time)}</div></div>
+              )}
+              {c.transport_start && (
+                <div><div class="form-label">Transport Start</div><div style="font-size:0.85rem;">{fmtDate(c.transport_start)}</div></div>
+              )}
+              {c.arrival_time && (
+                <div><div class="form-label">Hospital Arrival</div><div style="font-size:0.85rem;">{fmtDate(c.arrival_time)}</div></div>
+              )}
+              {c.transfer_care_time && (
+                <div><div class="form-label">Transfer of Care</div><div style="font-size:0.85rem;">{fmtDate(c.transfer_care_time)}</div></div>
+              )}
+            </div>
+          </div>
+
+          <!-- Transfer Details -->
+          <div class="card">
+            <div class="card-header"><h2>Transfer Details</h2></div>
             <div class="card-body" style="display:grid; grid-template-columns:1fr 1fr; gap:12px 24px;">
               <div>
-                <div class="form-label">Incident Time</div>
-                <div style="font-size:0.875rem;">{fmtDate(c.incident_time)}</div>
+                <div class="form-label">Sending Facility</div>
+                <div style="font-size:0.875rem;">{c.pickup}</div>
               </div>
               <div>
-                <div class="form-label">Patient</div>
-                <div style="font-size:0.875rem;">{c.patient_age ? `${c.patient_age}y` : '?'} · {c.patient_sex ?? 'Unknown sex'}</div>
+                <div class="form-label">Receiving Facility</div>
+                <div style="font-size:0.875rem;">{c.destination}</div>
               </div>
-              <div>
-                <div class="form-label">Vitals</div>
-                <div style="font-size:0.875rem;">{c.vitals}</div>
-              </div>
-              {c.interventions && (
+              {c.transport_mode && (
                 <div>
-                  <div class="form-label">Interventions</div>
-                  <div style="font-size:0.875rem; white-space:pre-line;">{c.interventions}</div>
+                  <div class="form-label">Transport Mode</div>
+                  <div style="font-size:0.875rem; text-transform:capitalize;">{c.transport_mode}</div>
                 </div>
               )}
-              {c.notes && (
+              {c.sending_physician && (
+                <div>
+                  <div class="form-label">Sending Physician</div>
+                  <div style="font-size:0.875rem;">{c.sending_physician}</div>
+                </div>
+              )}
+              {c.sending_diagnosis && (
                 <div style="grid-column:1/-1;">
-                  <div class="form-label">Notes</div>
-                  <div style="font-size:0.875rem;">{c.notes}</div>
+                  <div class="form-label">Sending Diagnosis</div>
+                  <div style="font-size:0.875rem;">{c.sending_diagnosis}</div>
+                </div>
+              )}
+              {c.referral_reason && (
+                <div>
+                  <div class="form-label">Referral Reason</div>
+                  <div style="font-size:0.875rem;">{c.referral_reason}</div>
+                </div>
+              )}
+              {c.receiving_provider && (
+                <div>
+                  <div class="form-label">Receiving Provider</div>
+                  <div style="font-size:0.875rem;">{c.receiving_provider}</div>
                 </div>
               )}
             </div>
           </div>
+
+          <!-- Patient & SAMPLE -->
+          <div class="card">
+            <div class="card-header"><h2>Patient &amp; SAMPLE History</h2></div>
+            <div class="card-body" style="display:grid; grid-template-columns:1fr 1fr; gap:12px 24px;">
+              <div>
+                <div class="form-label">Patient</div>
+                <div style="font-size:0.875rem;">
+                  {c.patient_name ?? 'Unknown'}
+                  {c.patient_age ? ` · ${c.patient_age}y` : ''}
+                  {c.patient_sex ? ` · ${c.patient_sex}` : ''}
+                </div>
+              </div>
+              <div style="grid-column:1/-1;">
+                <div class="form-label">Chief Complaint</div>
+                <div style="font-size:0.875rem; font-weight:500;">{c.complaint}</div>
+              </div>
+              {c.events_leading && (
+                <div style="grid-column:1/-1;">
+                  <div class="form-label">Events Leading</div>
+                  <div style="font-size:0.875rem;">{c.events_leading}</div>
+                </div>
+              )}
+              <div>
+                <div class="form-label">Allergies</div>
+                <div style="font-size:0.875rem;">{c.allergies ?? 'Not documented'}</div>
+              </div>
+              <div>
+                <div class="form-label">Medications</div>
+                <div style="font-size:0.875rem;">{c.current_medications ?? 'Not documented'}</div>
+              </div>
+              {c.past_medical_hx && (
+                <div>
+                  <div class="form-label">Past Medical History</div>
+                  <div style="font-size:0.875rem;">{c.past_medical_hx}</div>
+                </div>
+              )}
+              {c.last_oral_intake && (
+                <div>
+                  <div class="form-label">Last Oral Intake</div>
+                  <div style="font-size:0.875rem;">{c.last_oral_intake}</div>
+                </div>
+              )}
+            </div>
+          </div>
+
+          <!-- Vitals -->
+          {(v1 || v2) && (
+            <div class="card">
+              <div class="card-header"><h2>Vital Signs</h2></div>
+              <div class="card-body" style="display:grid; grid-template-columns:1fr 1fr; gap:16px 24px;">
+                {v1 && (
+                  <div>
+                    <div class="form-label" style="margin-bottom:8px;">
+                      Set 1 — Initial{v1.time ? ` · ${fmtDate(v1.time)}` : ''}
+                    </div>
+                    <div style="font-size:0.85rem; line-height:1.8; font-family:monospace;">
+                      {fmtVitals(v1) ?? 'No values recorded'}
+                    </div>
+                  </div>
+                )}
+                {v2 && (
+                  <div>
+                    <div class="form-label" style="margin-bottom:8px;">
+                      Set 2 — En Route{v2.time ? ` · ${fmtDate(v2.time)}` : ''}
+                    </div>
+                    <div style="font-size:0.85rem; line-height:1.8; font-family:monospace;">
+                      {fmtVitals(v2) ?? 'No values recorded'}
+                    </div>
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+
+          <!-- Interventions & Crew -->
+          {(c.interventions || c.crew_names || c.notes) && (
+            <div class="card">
+              <div class="card-header"><h2>Interventions &amp; Crew</h2></div>
+              <div class="card-body" style="display:grid; grid-template-columns:1fr 1fr; gap:12px 24px;">
+                {c.interventions && (
+                  <div style="grid-column:1/-1;">
+                    <div class="form-label">Interventions</div>
+                    <div style="font-size:0.875rem; white-space:pre-line;">{c.interventions}</div>
+                  </div>
+                )}
+                {c.crew_names && (
+                  <div>
+                    <div class="form-label">Crew</div>
+                    <div style="font-size:0.875rem;">{c.crew_names}</div>
+                  </div>
+                )}
+                {c.notes && (
+                  <div style="grid-column:1/-1;">
+                    <div class="form-label">Additional Notes</div>
+                    <div style="font-size:0.875rem;">{c.notes}</div>
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
 
           <!-- PCR Output -->
           <div id="pcr-card" class="card fade-in">
