@@ -1,516 +1,1168 @@
 ---
-import Base from '../../layouts/Base.astro';
+import Base from "../../layouts/Base.astro";
 
-const API = import.meta.env.PUBLIC_API_URL ?? 'http://localhost:8000';
-const token = Astro.cookies.get('nas_token')?.value;
+const API = import.meta.env.PUBLIC_API_URL ?? "http://localhost:8000";
+const token = Astro.cookies.get("nas_token")?.value;
 
-let error = '';
+let error = "";
 
-if (Astro.request.method === 'POST') {
-  try {
-    const form = await Astro.request.formData();
+if (Astro.request.method === "POST") {
+    try {
+        const form = await Astro.request.formData();
 
-    function fv(name: string) { return (form.get(name) as string) || null; }
-    function fi(name: string) { const v = form.get(name) as string; return v ? parseInt(v) : null; }
-    function ff(name: string) { const v = form.get(name) as string; return v ? parseFloat(v) : null; }
+        function fv(name: string) {
+            return (form.get(name) as string) || null;
+        }
+        function fi(name: string) {
+            const v = form.get(name) as string;
+            return v ? parseInt(v) : null;
+        }
+        function ff(name: string) {
+            const v = form.get(name) as string;
+            return v ? parseFloat(v) : null;
+        }
 
-    function vitals(prefix: string) {
-      const set: Record<string, any> = {};
-      const bpSys = fi(`${prefix}_bp_sys`);
-      const bpDia = fi(`${prefix}_bp_dia`);
-      const hr    = fi(`${prefix}_hr`);
-      const rr    = fi(`${prefix}_rr`);
-      const spo2  = fi(`${prefix}_spo2`);
-      const gcs   = fi(`${prefix}_gcs`);
-      const pain  = fi(`${prefix}_pain`);
-      const temp  = ff(`${prefix}_temp`);
-      const time  = fv(`${prefix}_time`);
-      if (bpSys !== null) set.bp_sys = bpSys;
-      if (bpDia !== null) set.bp_dia = bpDia;
-      if (hr    !== null) set.hr = hr;
-      if (rr    !== null) set.rr = rr;
-      if (spo2  !== null) set.spo2 = spo2;
-      if (gcs   !== null) set.gcs = gcs;
-      if (pain  !== null) set.pain = pain;
-      if (temp  !== null) set.temp_c = temp;
-      if (time)           set.time = new Date(time).toISOString();
-      return Object.keys(set).length ? set : null;
+        function vitals(prefix: string) {
+            const set: Record<string, any> = {};
+            const bpSys = fi(`${prefix}_bp_sys`);
+            const bpDia = fi(`${prefix}_bp_dia`);
+            const hr = fi(`${prefix}_hr`);
+            const rr = fi(`${prefix}_rr`);
+            const spo2 = fi(`${prefix}_spo2`);
+            const gcs = fi(`${prefix}_gcs`);
+            const pain = fi(`${prefix}_pain`);
+            const temp = ff(`${prefix}_temp`);
+            const time = fv(`${prefix}_time`);
+            if (bpSys !== null) set.bp_sys = bpSys;
+            if (bpDia !== null) set.bp_dia = bpDia;
+            if (hr !== null) set.hr = hr;
+            if (rr !== null) set.rr = rr;
+            if (spo2 !== null) set.spo2 = spo2;
+            if (gcs !== null) set.gcs = gcs;
+            if (pain !== null) set.pain = pain;
+            if (temp !== null) set.temp_c = temp;
+            if (time) set.time = new Date(time).toISOString();
+            return Object.keys(set).length ? set : null;
+        }
+
+        const body = {
+            dispatch_time: fv("dispatch_time"),
+            incident_time: form.get("incident_time") as string,
+            on_scene_time: fv("on_scene_time"),
+            transport_start: fv("transport_start"),
+            arrival_time: fv("arrival_time"),
+            transfer_care_time: fv("transfer_care_time"),
+            pickup: form.get("pickup") as string,
+            destination: form.get("destination") as string,
+            pickup_lat: ff("pickup_lat"),
+            pickup_lon: ff("pickup_lon"),
+            dest_lat: ff("dest_lat"),
+            dest_lon: ff("dest_lon"),
+            transport_mode: fv("transport_mode") ?? "non-emergent",
+            sending_physician: fv("sending_physician"),
+            sending_diagnosis: fv("sending_diagnosis"),
+            referral_reason: fv("referral_reason"),
+            receiving_provider: fv("receiving_provider"),
+            patient_name: fv("patient_name"),
+            patient_age: fi("patient_age"),
+            patient_sex: fv("patient_sex"),
+            complaint: form.get("complaint") as string,
+            events_leading: fv("events_leading"),
+            allergies: fv("allergies"),
+            current_medications: fv("current_medications"),
+            past_medical_hx: fv("past_medical_hx"),
+            last_oral_intake: fv("last_oral_intake"),
+            vitals_set_1: vitals("v1"),
+            vitals_set_2: vitals("v2"),
+            interventions: fv("interventions"),
+            notes: fv("notes"),
+            crew_names: fv("crew_names"),
+        };
+
+        const res = await fetch(`${API}/cases`, {
+            method: "POST",
+            headers: {
+                "Content-Type": "application/json",
+                Authorization: `Bearer ${token}`,
+            },
+            body: JSON.stringify(body),
+        });
+
+        if (res.ok) {
+            const created = await res.json();
+            return Astro.redirect(`/cases/${created.id}`);
+        } else {
+            const err = await res.json().catch(() => ({}));
+            error = err.detail ?? `Server error ${res.status}`;
+        }
+    } catch (e: any) {
+        error = e.message ?? "Unexpected error";
     }
-
-    const body = {
-      dispatch_time:      fv('dispatch_time'),
-      incident_time:      form.get('incident_time') as string,
-      on_scene_time:      fv('on_scene_time'),
-      transport_start:    fv('transport_start'),
-      arrival_time:       fv('arrival_time'),
-      transfer_care_time: fv('transfer_care_time'),
-      pickup:             form.get('pickup') as string,
-      destination:        form.get('destination') as string,
-      pickup_lat:         ff('pickup_lat'),
-      pickup_lon:         ff('pickup_lon'),
-      dest_lat:           ff('dest_lat'),
-      dest_lon:           ff('dest_lon'),
-      transport_mode:     fv('transport_mode') ?? 'non-emergent',
-      sending_physician:  fv('sending_physician'),
-      sending_diagnosis:  fv('sending_diagnosis'),
-      referral_reason:    fv('referral_reason'),
-      receiving_provider: fv('receiving_provider'),
-      patient_name:       fv('patient_name'),
-      patient_age:        fi('patient_age'),
-      patient_sex:        fv('patient_sex'),
-      complaint:          form.get('complaint') as string,
-      events_leading:     fv('events_leading'),
-      allergies:          fv('allergies'),
-      current_medications: fv('current_medications'),
-      past_medical_hx:    fv('past_medical_hx'),
-      last_oral_intake:   fv('last_oral_intake'),
-      vitals_set_1:       vitals('v1'),
-      vitals_set_2:       vitals('v2'),
-      interventions:      fv('interventions'),
-      notes:              fv('notes'),
-      crew_names:         fv('crew_names'),
-    };
-
-    const res = await fetch(`${API}/cases`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-      body: JSON.stringify(body),
-    });
-
-    if (res.ok) {
-      const created = await res.json();
-      return Astro.redirect(`/cases/${created.id}`);
-    } else {
-      const err = await res.json().catch(() => ({}));
-      error = err.detail ?? `Server error ${res.status}`;
-    }
-  } catch (e: any) {
-    error = e.message ?? 'Unexpected error';
-  }
 }
 
 const nowIso = new Date().toISOString().slice(0, 16);
+
+const steps = [
+    "Call Times",
+    "Transfer Details",
+    "Patient Demographics",
+    "SAMPLE History",
+    "Vitals",
+    "Interventions & Crew",
+    "GPS & Save",
+];
 ---
 
 <Base title="New Case">
-  <div class="page">
-    <div style="margin-bottom:24px;">
-      <a href="/dashboard" style="font-size:0.8rem; color:var(--charcoal-muted); display:inline-flex; align-items:center; gap:4px; margin-bottom:12px;">
-        ← Back
-      </a>
-      <h1>New Case</h1>
-      <p style="font-size:0.85rem; color:var(--charcoal-muted); margin-top:4px;">
-        Ghana National Ambulance Service — Patient Care Report. Fields marked * are required.
-      </p>
+    <style>
+        .wizard-header {
+            margin-bottom: 24px;
+        }
+        .step-indicator {
+            display: flex;
+            align-items: center;
+            gap: 0;
+            margin-top: 16px;
+            overflow-x: auto;
+            padding-bottom: 4px;
+        }
+        .step-dot {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 4px;
+            flex: 1;
+            min-width: 60px;
+            position: relative;
+        }
+        .step-dot:not(:last-child)::after {
+            content: "";
+            position: absolute;
+            top: 14px;
+            left: calc(50% + 14px);
+            right: calc(-50% + 14px);
+            height: 2px;
+            background: var(--border);
+            transition: background 0.2s;
+        }
+        .step-dot.completed:not(:last-child)::after {
+            background: var(--green-dark);
+        }
+        .step-circle {
+            width: 28px;
+            height: 28px;
+            border-radius: 50%;
+            border: 2px solid var(--border);
+            background: var(--surface);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 0.72rem;
+            font-weight: 600;
+            color: var(--charcoal-muted);
+            transition: all 0.2s;
+            z-index: 1;
+        }
+        .step-dot.active .step-circle {
+            border-color: var(--charcoal);
+            background: var(--charcoal);
+            color: #fff;
+        }
+        .step-dot.completed .step-circle {
+            border-color: var(--green-dark);
+            background: var(--green-dark);
+            color: #fff;
+        }
+        .step-label {
+            font-size: 0.65rem;
+            color: var(--charcoal-muted);
+            text-align: center;
+            white-space: nowrap;
+        }
+        .step-dot.active .step-label {
+            color: var(--charcoal);
+            font-weight: 600;
+        }
+        .step-dot.completed .step-label {
+            color: var(--green-dark);
+        }
+
+        .wizard-step {
+            display: none;
+        }
+        .wizard-step.active {
+            display: block;
+        }
+
+        .wizard-nav {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-top: 24px;
+            margin-bottom: 40px;
+            gap: 12px;
+        }
+        .wizard-nav .step-counter {
+            font-size: 0.8rem;
+            color: var(--charcoal-muted);
+        }
+    </style>
+
+    <div class="page">
+        <div class="wizard-header">
+            <a
+                href="/dashboard"
+                style="font-size:0.8rem; color:var(--charcoal-muted); display:inline-flex; align-items:center; gap:4px; margin-bottom:12px;"
+            >
+                ← Back
+            </a>
+            <h1>New Case</h1>
+            <p
+                style="font-size:0.85rem; color:var(--charcoal-muted); margin-top:4px;"
+            >
+                Ghana National Ambulance Service — Patient Care Report. Fields
+                marked * are required.
+            </p>
+
+            <!-- Step indicator -->
+            <div class="step-indicator" id="step-indicator">
+                {
+                    steps.map((label, i) => (
+                        <div
+                            class={`step-dot${i === 0 ? " active" : ""}`}
+                            data-step={i}
+                        >
+                            <div class="step-circle">{i + 1}</div>
+                            <div class="step-label">{label}</div>
+                        </div>
+                    ))
+                }
+            </div>
+        </div>
+
+        {
+            error && (
+                <div style="background:var(--red-bg); color:var(--red-text); border:1px solid #fecaca; border-radius:var(--radius-card); padding:14px 18px; margin-bottom:20px; font-size:0.85rem;">
+                    {error}
+                </div>
+            )
+        }
+
+        <form method="POST" id="case-form">
+            <!-- STEP 1: CALL TIMES -->
+            <div class="wizard-step active" data-step="0">
+                <div class="card">
+                    <div class="card-header"><h2>Call Times</h2></div>
+                    <div class="card-body">
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label class="form-label">Dispatch Time</label>
+                                <div style="display:flex; gap:6px;">
+                                    <input
+                                        class="form-input"
+                                        type="datetime-local"
+                                        name="dispatch_time"
+                                        style="flex:1;"
+                                    />
+                                    <button
+                                        type="button"
+                                        class="btn btn-outline stamp-btn"
+                                        data-target="dispatch_time"
+                                        style="padding:6px 10px; font-size:0.75rem; white-space:nowrap;"
+                                        >Now</button
+                                    >
+                                </div>
+                            </div>
+                            <div class="form-group">
+                                <label class="form-label">Incident Time *</label
+                                >
+                                <div style="display:flex; gap:6px;">
+                                    <input
+                                        class="form-input"
+                                        type="datetime-local"
+                                        name="incident_time"
+                                        value={nowIso}
+                                        required
+                                        style="flex:1;"
+                                    />
+                                    <button
+                                        type="button"
+                                        class="btn btn-outline stamp-btn"
+                                        data-target="incident_time"
+                                        style="padding:6px 10px; font-size:0.75rem; white-space:nowrap;"
+                                        >Now</button
+                                    >
+                                </div>
+                            </div>
+                        </div>
+                        <div class="form-row" style="margin-top:12px;">
+                            <div class="form-group">
+                                <label class="form-label">On Scene Time</label>
+                                <div style="display:flex; gap:6px;">
+                                    <input
+                                        class="form-input"
+                                        type="datetime-local"
+                                        name="on_scene_time"
+                                        style="flex:1;"
+                                    />
+                                    <button
+                                        type="button"
+                                        class="btn btn-outline stamp-btn"
+                                        data-target="on_scene_time"
+                                        style="padding:6px 10px; font-size:0.75rem; white-space:nowrap;"
+                                        >Now</button
+                                    >
+                                </div>
+                            </div>
+                            <div class="form-group">
+                                <label class="form-label">Transport Start</label
+                                >
+                                <div style="display:flex; gap:6px;">
+                                    <input
+                                        class="form-input"
+                                        type="datetime-local"
+                                        name="transport_start"
+                                        style="flex:1;"
+                                    />
+                                    <button
+                                        type="button"
+                                        class="btn btn-outline stamp-btn"
+                                        data-target="transport_start"
+                                        style="padding:6px 10px; font-size:0.75rem; white-space:nowrap;"
+                                        >Now</button
+                                    >
+                                </div>
+                            </div>
+                        </div>
+                        <div class="form-row" style="margin-top:12px;">
+                            <div class="form-group">
+                                <label class="form-label"
+                                    >Hospital Arrival</label
+                                >
+                                <div style="display:flex; gap:6px;">
+                                    <input
+                                        class="form-input"
+                                        type="datetime-local"
+                                        name="arrival_time"
+                                        style="flex:1;"
+                                    />
+                                    <button
+                                        type="button"
+                                        class="btn btn-outline stamp-btn"
+                                        data-target="arrival_time"
+                                        style="padding:6px 10px; font-size:0.75rem; white-space:nowrap;"
+                                        >Now</button
+                                    >
+                                </div>
+                            </div>
+                            <div class="form-group">
+                                <label class="form-label"
+                                    >Transfer of Care</label
+                                >
+                                <div style="display:flex; gap:6px;">
+                                    <input
+                                        class="form-input"
+                                        type="datetime-local"
+                                        name="transfer_care_time"
+                                        style="flex:1;"
+                                    />
+                                    <button
+                                        type="button"
+                                        class="btn btn-outline stamp-btn"
+                                        data-target="transfer_care_time"
+                                        style="padding:6px 10px; font-size:0.75rem; white-space:nowrap;"
+                                        >Now</button
+                                    >
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- STEP 2: TRANSFER DETAILS -->
+            <div class="wizard-step" data-step="1">
+                <div class="card">
+                    <div class="card-header">
+                        <h2>Transfer Details</h2>
+                        <span
+                            style="font-size:0.78rem; color:var(--charcoal-muted);"
+                            >Inter-Facility Transfer (IFT)</span
+                        >
+                    </div>
+                    <div class="card-body">
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label class="form-label"
+                                    >Sending Facility *</label
+                                >
+                                <input
+                                    class="form-input"
+                                    type="text"
+                                    name="pickup"
+                                    list="gh-hospitals"
+                                    placeholder="e.g. Tamale Teaching Hospital"
+                                    required
+                                />
+                            </div>
+                            <div class="form-group">
+                                <label class="form-label"
+                                    >Receiving Facility *</label
+                                >
+                                <input
+                                    class="form-input"
+                                    type="text"
+                                    name="destination"
+                                    list="gh-hospitals"
+                                    placeholder="e.g. Korle Bu Teaching Hospital"
+                                    required
+                                />
+                            </div>
+                        </div>
+                        <div class="form-row" style="margin-top:12px;">
+                            <div class="form-group">
+                                <label class="form-label">Transport Mode</label>
+                                <select
+                                    class="form-select"
+                                    name="transport_mode"
+                                >
+                                    <option value="non-emergent"
+                                        >Non-Emergent</option
+                                    >
+                                    <option value="emergent"
+                                        >Emergent (Lights &amp; Siren)</option
+                                    >
+                                    <option value="critical"
+                                        >Critical Care Transport</option
+                                    >
+                                </select>
+                            </div>
+                            <div class="form-group">
+                                <label class="form-label"
+                                    >Sending Physician</label
+                                >
+                                <input
+                                    class="form-input"
+                                    type="text"
+                                    name="sending_physician"
+                                    placeholder="Dr. Mensah"
+                                />
+                            </div>
+                        </div>
+                        <div class="form-group" style="margin-top:12px;">
+                            <label class="form-label"
+                                >Sending Diagnosis / Reason for Transfer</label
+                            >
+                            <input
+                                class="form-input"
+                                type="text"
+                                name="sending_diagnosis"
+                                placeholder="e.g. Post-partum haemorrhage, sepsis, RTA with head injury"
+                            />
+                        </div>
+                        <div class="form-row" style="margin-top:12px;">
+                            <div class="form-group">
+                                <label class="form-label">Referral Reason</label
+                                >
+                                <input
+                                    class="form-input"
+                                    type="text"
+                                    name="referral_reason"
+                                    placeholder="e.g. ICU bed required, specialist consult"
+                                />
+                            </div>
+                            <div class="form-group">
+                                <label class="form-label"
+                                    >Receiving Provider</label
+                                >
+                                <input
+                                    class="form-input"
+                                    type="text"
+                                    name="receiving_provider"
+                                    placeholder="Dr. Asante / ED Team"
+                                />
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- STEP 3: PATIENT DEMOGRAPHICS -->
+            <div class="wizard-step" data-step="2">
+                <div class="card">
+                    <div class="card-header"><h2>Patient Demographics</h2></div>
+                    <div class="card-body">
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label class="form-label">Patient Name</label>
+                                <input
+                                    class="form-input"
+                                    type="text"
+                                    name="patient_name"
+                                    placeholder="Full name"
+                                />
+                            </div>
+                            <div class="form-group">
+                                <label class="form-label">Age (years)</label>
+                                <input
+                                    class="form-input"
+                                    type="number"
+                                    name="patient_age"
+                                    placeholder="35"
+                                    min="0"
+                                    max="120"
+                                />
+                            </div>
+                        </div>
+                        <div class="form-row" style="margin-top:12px;">
+                            <div class="form-group">
+                                <label class="form-label">Sex</label>
+                                <select class="form-select" name="patient_sex">
+                                    <option value="">— Select —</option>
+                                    <option value="Male">Male</option>
+                                    <option value="Female">Female</option>
+                                    <option value="Unknown">Unknown</option>
+                                </select>
+                            </div>
+                            <div class="form-group"></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- STEP 4: SAMPLE HISTORY -->
+            <div class="wizard-step" data-step="3">
+                <div class="card">
+                    <div class="card-header">
+                        <h2>SAMPLE History</h2>
+                        <span
+                            style="font-size:0.78rem; color:var(--charcoal-muted);"
+                            >Signs/Symptoms · Allergies · Medications · Past Hx
+                            · Last Oral · Events</span
+                        >
+                    </div>
+                    <div class="card-body">
+                        <div class="form-group">
+                            <label class="form-label"
+                                >Chief Complaint / Signs &amp; Symptoms *</label
+                            >
+                            <input
+                                class="form-input"
+                                type="text"
+                                name="complaint"
+                                placeholder="e.g. Severe abdominal pain, heavy vaginal bleeding since 2 hours"
+                                required
+                            />
+                        </div>
+                        <div class="form-group" style="margin-top:12px;">
+                            <label class="form-label"
+                                >Events Leading to Transfer</label
+                            >
+                            <textarea
+                                class="form-textarea"
+                                name="events_leading"
+                                placeholder="Brief history of presenting illness and events prior to call..."
+                                style="min-height:72px;"></textarea>
+                        </div>
+                        <div class="form-row" style="margin-top:12px;">
+                            <div class="form-group">
+                                <label class="form-label">Allergies</label>
+                                <input
+                                    class="form-input"
+                                    type="text"
+                                    name="allergies"
+                                    placeholder="NKDA / Penicillin / Sulfa drugs"
+                                />
+                            </div>
+                            <div class="form-group">
+                                <label class="form-label"
+                                    >Current Medications</label
+                                >
+                                <input
+                                    class="form-input"
+                                    type="text"
+                                    name="current_medications"
+                                    placeholder="e.g. Artemether-lumefantrine, Metformin"
+                                />
+                            </div>
+                        </div>
+                        <div class="form-row" style="margin-top:12px;">
+                            <div class="form-group">
+                                <label class="form-label"
+                                    >Past Medical History</label
+                                >
+                                <input
+                                    class="form-input"
+                                    type="text"
+                                    name="past_medical_hx"
+                                    placeholder="e.g. Hypertension, Sickle cell disease, G3P2"
+                                />
+                            </div>
+                            <div class="form-group">
+                                <label class="form-label"
+                                    >Last Oral Intake</label
+                                >
+                                <input
+                                    class="form-input"
+                                    type="text"
+                                    name="last_oral_intake"
+                                    placeholder="e.g. Fufu 3 hours ago"
+                                />
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- STEP 5: VITALS -->
+            <div class="wizard-step" data-step="4">
+                <div class="card" style="margin-bottom:16px;">
+                    <div class="card-header">
+                        <h2>Vitals — Set 1</h2>
+                        <span
+                            style="font-size:0.78rem; color:var(--charcoal-muted);"
+                            >Initial / On Scene</span
+                        >
+                    </div>
+                    <div class="card-body">
+                        <div class="form-row" style="margin-bottom:12px;">
+                            <div class="form-group">
+                                <label class="form-label">Time</label>
+                                <div style="display:flex; gap:6px;">
+                                    <input
+                                        class="form-input"
+                                        type="datetime-local"
+                                        name="v1_time"
+                                        style="flex:1;"
+                                    />
+                                    <button
+                                        type="button"
+                                        class="btn btn-outline stamp-btn"
+                                        data-target="v1_time"
+                                        style="padding:6px 10px; font-size:0.75rem; white-space:nowrap;"
+                                        >Now</button
+                                    >
+                                </div>
+                            </div>
+                            <div class="form-group"></div>
+                        </div>
+                        <div
+                            style="display:grid; grid-template-columns:repeat(auto-fit, minmax(120px,1fr)); gap:12px;"
+                        >
+                            <div class="form-group" style="margin-bottom:0;">
+                                <label class="form-label">BP Sys (mmHg)</label>
+                                <input
+                                    class="form-input"
+                                    type="number"
+                                    name="v1_bp_sys"
+                                    placeholder="120"
+                                    min="40"
+                                    max="300"
+                                />
+                            </div>
+                            <div class="form-group" style="margin-bottom:0;">
+                                <label class="form-label">BP Dia (mmHg)</label>
+                                <input
+                                    class="form-input"
+                                    type="number"
+                                    name="v1_bp_dia"
+                                    placeholder="80"
+                                    min="20"
+                                    max="200"
+                                />
+                            </div>
+                            <div class="form-group" style="margin-bottom:0;">
+                                <label class="form-label">HR (bpm)</label>
+                                <input
+                                    class="form-input"
+                                    type="number"
+                                    name="v1_hr"
+                                    placeholder="80"
+                                    min="20"
+                                    max="300"
+                                />
+                            </div>
+                            <div class="form-group" style="margin-bottom:0;">
+                                <label class="form-label">RR (/min)</label>
+                                <input
+                                    class="form-input"
+                                    type="number"
+                                    name="v1_rr"
+                                    placeholder="16"
+                                    min="4"
+                                    max="60"
+                                />
+                            </div>
+                            <div class="form-group" style="margin-bottom:0;">
+                                <label class="form-label">SpO₂ (%)</label>
+                                <input
+                                    class="form-input"
+                                    type="number"
+                                    name="v1_spo2"
+                                    placeholder="98"
+                                    min="50"
+                                    max="100"
+                                />
+                            </div>
+                            <div class="form-group" style="margin-bottom:0;">
+                                <label class="form-label">Temp (°C)</label>
+                                <input
+                                    class="form-input"
+                                    type="number"
+                                    step="0.1"
+                                    name="v1_temp"
+                                    placeholder="37.0"
+                                    min="30"
+                                    max="45"
+                                />
+                            </div>
+                            <div class="form-group" style="margin-bottom:0;">
+                                <label class="form-label">GCS (3–15)</label>
+                                <input
+                                    class="form-input"
+                                    type="number"
+                                    name="v1_gcs"
+                                    placeholder="15"
+                                    min="3"
+                                    max="15"
+                                />
+                            </div>
+                            <div class="form-group" style="margin-bottom:0;">
+                                <label class="form-label">Pain (0–10)</label>
+                                <input
+                                    class="form-input"
+                                    type="number"
+                                    name="v1_pain"
+                                    placeholder="5"
+                                    min="0"
+                                    max="10"
+                                />
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="card">
+                    <div class="card-header">
+                        <h2>Vitals — Set 2</h2>
+                        <span
+                            style="font-size:0.78rem; color:var(--charcoal-muted);"
+                            >En Route / On Arrival</span
+                        >
+                    </div>
+                    <div class="card-body">
+                        <div class="form-row" style="margin-bottom:12px;">
+                            <div class="form-group">
+                                <label class="form-label">Time</label>
+                                <div style="display:flex; gap:6px;">
+                                    <input
+                                        class="form-input"
+                                        type="datetime-local"
+                                        name="v2_time"
+                                        style="flex:1;"
+                                    />
+                                    <button
+                                        type="button"
+                                        class="btn btn-outline stamp-btn"
+                                        data-target="v2_time"
+                                        style="padding:6px 10px; font-size:0.75rem; white-space:nowrap;"
+                                        >Now</button
+                                    >
+                                </div>
+                            </div>
+                            <div class="form-group"></div>
+                        </div>
+                        <div
+                            style="display:grid; grid-template-columns:repeat(auto-fit, minmax(120px,1fr)); gap:12px;"
+                        >
+                            <div class="form-group" style="margin-bottom:0;">
+                                <label class="form-label">BP Sys (mmHg)</label>
+                                <input
+                                    class="form-input"
+                                    type="number"
+                                    name="v2_bp_sys"
+                                    placeholder="120"
+                                    min="40"
+                                    max="300"
+                                />
+                            </div>
+                            <div class="form-group" style="margin-bottom:0;">
+                                <label class="form-label">BP Dia (mmHg)</label>
+                                <input
+                                    class="form-input"
+                                    type="number"
+                                    name="v2_bp_dia"
+                                    placeholder="80"
+                                    min="20"
+                                    max="200"
+                                />
+                            </div>
+                            <div class="form-group" style="margin-bottom:0;">
+                                <label class="form-label">HR (bpm)</label>
+                                <input
+                                    class="form-input"
+                                    type="number"
+                                    name="v2_hr"
+                                    placeholder="80"
+                                    min="20"
+                                    max="300"
+                                />
+                            </div>
+                            <div class="form-group" style="margin-bottom:0;">
+                                <label class="form-label">RR (/min)</label>
+                                <input
+                                    class="form-input"
+                                    type="number"
+                                    name="v2_rr"
+                                    placeholder="16"
+                                    min="4"
+                                    max="60"
+                                />
+                            </div>
+                            <div class="form-group" style="margin-bottom:0;">
+                                <label class="form-label">SpO₂ (%)</label>
+                                <input
+                                    class="form-input"
+                                    type="number"
+                                    name="v2_spo2"
+                                    placeholder="98"
+                                    min="50"
+                                    max="100"
+                                />
+                            </div>
+                            <div class="form-group" style="margin-bottom:0;">
+                                <label class="form-label">Temp (°C)</label>
+                                <input
+                                    class="form-input"
+                                    type="number"
+                                    step="0.1"
+                                    name="v2_temp"
+                                    placeholder="37.0"
+                                    min="30"
+                                    max="45"
+                                />
+                            </div>
+                            <div class="form-group" style="margin-bottom:0;">
+                                <label class="form-label">GCS (3–15)</label>
+                                <input
+                                    class="form-input"
+                                    type="number"
+                                    name="v2_gcs"
+                                    placeholder="15"
+                                    min="3"
+                                    max="15"
+                                />
+                            </div>
+                            <div class="form-group" style="margin-bottom:0;">
+                                <label class="form-label">Pain (0–10)</label>
+                                <input
+                                    class="form-input"
+                                    type="number"
+                                    name="v2_pain"
+                                    placeholder="5"
+                                    min="0"
+                                    max="10"
+                                />
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- STEP 6: INTERVENTIONS & CREW -->
+            <div class="wizard-step" data-step="5">
+                <div class="card" style="margin-bottom:16px;">
+                    <div class="card-header">
+                        <h2>Interventions &amp; Treatment</h2>
+                    </div>
+                    <div class="card-body">
+                        <div class="form-group">
+                            <label class="form-label">Interventions</label>
+                            <textarea
+                                class="form-textarea"
+                                name="interventions"
+                                placeholder="e.g. IV access x2 right AC 18G
+500ml Normal Saline bolus
+O₂ 15L/min NRB
+Morphine 5mg IV"
+                                style="min-height:96px;"></textarea>
+                        </div>
+                        <div
+                            class="form-group"
+                            style="margin-top:12px; margin-bottom:0;"
+                        >
+                            <label class="form-label">Additional Notes</label>
+                            <textarea
+                                class="form-textarea"
+                                name="notes"
+                                placeholder="Any other relevant clinical observations..."
+                                style="min-height:72px;"></textarea>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="card">
+                    <div class="card-header"><h2>Crew</h2></div>
+                    <div class="card-body">
+                        <div class="form-group" style="margin-bottom:0;">
+                            <label class="form-label"
+                                >Crew Names &amp; Roles</label
+                            >
+                            <input
+                                class="form-input"
+                                type="text"
+                                name="crew_names"
+                                placeholder="e.g. Ama Owusu (EMT-Basic), Kofi Mensah (Driver)"
+                            />
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- STEP 7: GPS & SAVE -->
+            <div class="wizard-step" data-step="6">
+                <div class="card">
+                    <div class="card-header">
+                        <h2>GPS Coordinates</h2>
+                        <span
+                            style="font-size:0.78rem; color:var(--charcoal-muted);"
+                            >Optional — enables route ETA &amp; weather context</span
+                        >
+                    </div>
+                    <div class="card-body">
+                        <button
+                            type="button"
+                            id="gps-btn"
+                            class="btn btn-outline"
+                            style="margin-bottom:16px; font-size:0.8rem;"
+                        >
+                            Use My GPS for Pickup Location
+                        </button>
+                        <div class="form-row">
+                            <div class="form-group" style="margin-bottom:0;">
+                                <label class="form-label">Pickup Latitude</label
+                                >
+                                <input
+                                    class="form-input"
+                                    type="number"
+                                    step="any"
+                                    name="pickup_lat"
+                                    id="pickup_lat"
+                                    placeholder="9.407"
+                                />
+                            </div>
+                            <div class="form-group" style="margin-bottom:0;">
+                                <label class="form-label"
+                                    >Pickup Longitude</label
+                                >
+                                <input
+                                    class="form-input"
+                                    type="number"
+                                    step="any"
+                                    name="pickup_lon"
+                                    id="pickup_lon"
+                                    placeholder="-0.853"
+                                />
+                            </div>
+                        </div>
+                        <div class="form-row" style="margin-top:12px;">
+                            <div class="form-group" style="margin-bottom:0;">
+                                <label class="form-label"
+                                    >Destination Latitude</label
+                                >
+                                <input
+                                    class="form-input"
+                                    type="number"
+                                    step="any"
+                                    name="dest_lat"
+                                    placeholder="5.560"
+                                />
+                            </div>
+                            <div class="form-group" style="margin-bottom:0;">
+                                <label class="form-label"
+                                    >Destination Longitude</label
+                                >
+                                <input
+                                    class="form-input"
+                                    type="number"
+                                    step="any"
+                                    name="dest_lon"
+                                    placeholder="-0.205"
+                                />
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Ghana hospital datalist (always in DOM) -->
+            <datalist id="gh-hospitals">
+                <option value="Korle Bu Teaching Hospital"></option>
+                <option value="Komfo Anokye Teaching Hospital"></option>
+                <option value="Tamale Teaching Hospital"></option>
+                <option value="Cape Coast Teaching Hospital"></option>
+                <option value="Ho Teaching Hospital"></option>
+                <option value="Bolgatanga Regional Hospital"></option>
+                <option value="Wa Regional Hospital"></option>
+                <option value="Sunyani Regional Hospital"></option>
+                <option value="Koforidua Regional Hospital"></option>
+                <option value="Greater Accra Regional Hospital (Ridge)"
+                ></option>
+                <option value="37 Military Hospital"></option>
+                <option value="Police Hospital Accra"></option>
+                <option value="Tema General Hospital"></option>
+                <option value="Effia Nkwanta Regional Hospital"></option>
+                <option value="Brong Ahafo Regional Hospital"></option>
+                <option value="Upper East Regional Hospital"></option>
+                <option value="Winneba District Hospital"></option>
+                <option value="Suntreso Government Hospital"></option>
+                <option value="Agogo Presbyterian Hospital"></option>
+                <option value="St. Dominic Hospital Akwatia"></option>
+            </datalist>
+
+            <!-- Navigation -->
+            <div class="wizard-nav">
+                <div style="display:flex; gap:8px;">
+                    <a href="/dashboard" class="btn btn-outline" id="cancel-btn"
+                        >Cancel</a
+                    >
+                    <button
+                        type="button"
+                        class="btn btn-outline"
+                        id="prev-btn"
+                        style="display:none;">← Previous</button
+                    >
+                </div>
+                <span class="step-counter" id="step-counter">Step 1 of 7</span>
+                <div>
+                    <button type="button" class="btn btn-primary" id="next-btn"
+                        >Next →</button
+                    >
+                    <button
+                        type="submit"
+                        class="btn btn-primary"
+                        id="save-btn"
+                        style="display:none;">Save Case →</button
+                    >
+                </div>
+            </div>
+        </form>
     </div>
-
-    {error && (
-      <div style="background:var(--red-bg); color:var(--red-text); border:1px solid #fecaca; border-radius:var(--radius-card); padding:14px 18px; margin-bottom:20px; font-size:0.85rem;">
-        {error}
-      </div>
-    )}
-
-    <form method="POST" id="case-form">
-
-      <!-- SECTION 1: CALL TIMES -->
-      <div class="card" style="margin-bottom:16px;">
-        <div class="card-header"><h2>Call Times</h2></div>
-        <div class="card-body">
-          <div class="form-row">
-            <div class="form-group">
-              <label class="form-label">Dispatch Time</label>
-              <div style="display:flex; gap:6px;">
-                <input class="form-input" type="datetime-local" name="dispatch_time" style="flex:1;" />
-                <button type="button" class="btn btn-outline stamp-btn" data-target="dispatch_time" style="padding:6px 10px; font-size:0.75rem; white-space:nowrap;">Now</button>
-              </div>
-            </div>
-            <div class="form-group">
-              <label class="form-label">Incident Time *</label>
-              <div style="display:flex; gap:6px;">
-                <input class="form-input" type="datetime-local" name="incident_time" value={nowIso} required style="flex:1;" />
-                <button type="button" class="btn btn-outline stamp-btn" data-target="incident_time" style="padding:6px 10px; font-size:0.75rem; white-space:nowrap;">Now</button>
-              </div>
-            </div>
-          </div>
-          <div class="form-row" style="margin-top:12px;">
-            <div class="form-group">
-              <label class="form-label">On Scene Time</label>
-              <div style="display:flex; gap:6px;">
-                <input class="form-input" type="datetime-local" name="on_scene_time" style="flex:1;" />
-                <button type="button" class="btn btn-outline stamp-btn" data-target="on_scene_time" style="padding:6px 10px; font-size:0.75rem; white-space:nowrap;">Now</button>
-              </div>
-            </div>
-            <div class="form-group">
-              <label class="form-label">Transport Start</label>
-              <div style="display:flex; gap:6px;">
-                <input class="form-input" type="datetime-local" name="transport_start" style="flex:1;" />
-                <button type="button" class="btn btn-outline stamp-btn" data-target="transport_start" style="padding:6px 10px; font-size:0.75rem; white-space:nowrap;">Now</button>
-              </div>
-            </div>
-          </div>
-          <div class="form-row" style="margin-top:12px;">
-            <div class="form-group">
-              <label class="form-label">Hospital Arrival</label>
-              <div style="display:flex; gap:6px;">
-                <input class="form-input" type="datetime-local" name="arrival_time" style="flex:1;" />
-                <button type="button" class="btn btn-outline stamp-btn" data-target="arrival_time" style="padding:6px 10px; font-size:0.75rem; white-space:nowrap;">Now</button>
-              </div>
-            </div>
-            <div class="form-group">
-              <label class="form-label">Transfer of Care</label>
-              <div style="display:flex; gap:6px;">
-                <input class="form-input" type="datetime-local" name="transfer_care_time" style="flex:1;" />
-                <button type="button" class="btn btn-outline stamp-btn" data-target="transfer_care_time" style="padding:6px 10px; font-size:0.75rem; white-space:nowrap;">Now</button>
-              </div>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      <!-- SECTION 2: IFT DETAILS -->
-      <div class="card" style="margin-bottom:16px;">
-        <div class="card-header">
-          <h2>Transfer Details</h2>
-          <span style="font-size:0.78rem; color:var(--charcoal-muted);">Inter-Facility Transfer (IFT)</span>
-        </div>
-        <div class="card-body">
-          <div class="form-row">
-            <div class="form-group">
-              <label class="form-label">Sending Facility *</label>
-              <input class="form-input" type="text" name="pickup" list="gh-hospitals" placeholder="e.g. Tamale Teaching Hospital" required />
-            </div>
-            <div class="form-group">
-              <label class="form-label">Receiving Facility *</label>
-              <input class="form-input" type="text" name="destination" list="gh-hospitals" placeholder="e.g. Korle Bu Teaching Hospital" required />
-            </div>
-          </div>
-          <div class="form-row" style="margin-top:12px;">
-            <div class="form-group">
-              <label class="form-label">Transport Mode</label>
-              <select class="form-select" name="transport_mode">
-                <option value="non-emergent">Non-Emergent</option>
-                <option value="emergent">Emergent (Lights &amp; Siren)</option>
-                <option value="critical">Critical Care Transport</option>
-              </select>
-            </div>
-            <div class="form-group">
-              <label class="form-label">Sending Physician</label>
-              <input class="form-input" type="text" name="sending_physician" placeholder="Dr. Mensah" />
-            </div>
-          </div>
-          <div class="form-group" style="margin-top:12px;">
-            <label class="form-label">Sending Diagnosis / Reason for Transfer</label>
-            <input class="form-input" type="text" name="sending_diagnosis" placeholder="e.g. Post-partum haemorrhage, sepsis, RTA with head injury" />
-          </div>
-          <div class="form-row" style="margin-top:12px;">
-            <div class="form-group">
-              <label class="form-label">Referral Reason</label>
-              <input class="form-input" type="text" name="referral_reason" placeholder="e.g. ICU bed required, specialist consult" />
-            </div>
-            <div class="form-group">
-              <label class="form-label">Receiving Provider</label>
-              <input class="form-input" type="text" name="receiving_provider" placeholder="Dr. Asante / ED Team" />
-            </div>
-          </div>
-        </div>
-      </div>
-
-      <!-- Ghana hospital datalist -->
-      <datalist id="gh-hospitals">
-        <option value="Korle Bu Teaching Hospital" />
-        <option value="Komfo Anokye Teaching Hospital" />
-        <option value="Tamale Teaching Hospital" />
-        <option value="Cape Coast Teaching Hospital" />
-        <option value="Ho Teaching Hospital" />
-        <option value="Bolgatanga Regional Hospital" />
-        <option value="Wa Regional Hospital" />
-        <option value="Sunyani Regional Hospital" />
-        <option value="Koforidua Regional Hospital" />
-        <option value="Greater Accra Regional Hospital (Ridge)" />
-        <option value="37 Military Hospital" />
-        <option value="Police Hospital Accra" />
-        <option value="Tema General Hospital" />
-        <option value="Effia Nkwanta Regional Hospital" />
-        <option value="Brong Ahafo Regional Hospital" />
-        <option value="Upper East Regional Hospital" />
-        <option value="Winneba District Hospital" />
-        <option value="Suntreso Government Hospital" />
-        <option value="Agogo Presbyterian Hospital" />
-        <option value="St. Dominic Hospital Akwatia" />
-      </datalist>
-
-      <!-- SECTION 3: PATIENT DEMOGRAPHICS -->
-      <div class="card" style="margin-bottom:16px;">
-        <div class="card-header"><h2>Patient Demographics</h2></div>
-        <div class="card-body">
-          <div class="form-row">
-            <div class="form-group">
-              <label class="form-label">Patient Name</label>
-              <input class="form-input" type="text" name="patient_name" placeholder="Full name" />
-            </div>
-            <div class="form-group">
-              <label class="form-label">Age (years)</label>
-              <input class="form-input" type="number" name="patient_age" placeholder="35" min="0" max="120" />
-            </div>
-          </div>
-          <div class="form-row" style="margin-top:12px;">
-            <div class="form-group">
-              <label class="form-label">Sex</label>
-              <select class="form-select" name="patient_sex">
-                <option value="">— Select —</option>
-                <option value="Male">Male</option>
-                <option value="Female">Female</option>
-                <option value="Unknown">Unknown</option>
-              </select>
-            </div>
-            <div class="form-group"></div>
-          </div>
-        </div>
-      </div>
-
-      <!-- SECTION 4: SAMPLE HISTORY -->
-      <div class="card" style="margin-bottom:16px;">
-        <div class="card-header">
-          <h2>SAMPLE History</h2>
-          <span style="font-size:0.78rem; color:var(--charcoal-muted);">Signs/Symptoms · Allergies · Medications · Past Hx · Last Oral · Events</span>
-        </div>
-        <div class="card-body">
-          <div class="form-group">
-            <label class="form-label">Chief Complaint / Signs &amp; Symptoms *</label>
-            <input class="form-input" type="text" name="complaint" placeholder="e.g. Severe abdominal pain, heavy vaginal bleeding since 2 hours" required />
-          </div>
-          <div class="form-group" style="margin-top:12px;">
-            <label class="form-label">Events Leading to Transfer</label>
-            <textarea class="form-textarea" name="events_leading" placeholder="Brief history of presenting illness and events prior to call..." style="min-height:72px;"></textarea>
-          </div>
-          <div class="form-row" style="margin-top:12px;">
-            <div class="form-group">
-              <label class="form-label">Allergies</label>
-              <input class="form-input" type="text" name="allergies" placeholder="NKDA / Penicillin / Sulfa drugs" />
-            </div>
-            <div class="form-group">
-              <label class="form-label">Current Medications</label>
-              <input class="form-input" type="text" name="current_medications" placeholder="e.g. Artemether-lumefantrine, Metformin" />
-            </div>
-          </div>
-          <div class="form-row" style="margin-top:12px;">
-            <div class="form-group">
-              <label class="form-label">Past Medical History</label>
-              <input class="form-input" type="text" name="past_medical_hx" placeholder="e.g. Hypertension, Sickle cell disease, G3P2" />
-            </div>
-            <div class="form-group">
-              <label class="form-label">Last Oral Intake</label>
-              <input class="form-input" type="text" name="last_oral_intake" placeholder="e.g. Fufu 3 hours ago" />
-            </div>
-          </div>
-        </div>
-      </div>
-
-      <!-- SECTION 5: VITALS SET 1 -->
-      <div class="card" style="margin-bottom:16px;">
-        <div class="card-header">
-          <h2>Vitals — Set 1</h2>
-          <span style="font-size:0.78rem; color:var(--charcoal-muted);">Initial / On Scene</span>
-        </div>
-        <div class="card-body">
-          <div class="form-row" style="margin-bottom:12px;">
-            <div class="form-group">
-              <label class="form-label">Time</label>
-              <div style="display:flex; gap:6px;">
-                <input class="form-input" type="datetime-local" name="v1_time" style="flex:1;" />
-                <button type="button" class="btn btn-outline stamp-btn" data-target="v1_time" style="padding:6px 10px; font-size:0.75rem; white-space:nowrap;">Now</button>
-              </div>
-            </div>
-            <div class="form-group"></div>
-          </div>
-          <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(120px,1fr)); gap:12px;">
-            <div class="form-group" style="margin-bottom:0;">
-              <label class="form-label">BP Sys (mmHg)</label>
-              <input class="form-input" type="number" name="v1_bp_sys" placeholder="120" min="40" max="300" />
-            </div>
-            <div class="form-group" style="margin-bottom:0;">
-              <label class="form-label">BP Dia (mmHg)</label>
-              <input class="form-input" type="number" name="v1_bp_dia" placeholder="80" min="20" max="200" />
-            </div>
-            <div class="form-group" style="margin-bottom:0;">
-              <label class="form-label">HR (bpm)</label>
-              <input class="form-input" type="number" name="v1_hr" placeholder="80" min="20" max="300" />
-            </div>
-            <div class="form-group" style="margin-bottom:0;">
-              <label class="form-label">RR (/min)</label>
-              <input class="form-input" type="number" name="v1_rr" placeholder="16" min="4" max="60" />
-            </div>
-            <div class="form-group" style="margin-bottom:0;">
-              <label class="form-label">SpO₂ (%)</label>
-              <input class="form-input" type="number" name="v1_spo2" placeholder="98" min="50" max="100" />
-            </div>
-            <div class="form-group" style="margin-bottom:0;">
-              <label class="form-label">Temp (°C)</label>
-              <input class="form-input" type="number" step="0.1" name="v1_temp" placeholder="37.0" min="30" max="45" />
-            </div>
-            <div class="form-group" style="margin-bottom:0;">
-              <label class="form-label">GCS (3–15)</label>
-              <input class="form-input" type="number" name="v1_gcs" placeholder="15" min="3" max="15" />
-            </div>
-            <div class="form-group" style="margin-bottom:0;">
-              <label class="form-label">Pain (0–10)</label>
-              <input class="form-input" type="number" name="v1_pain" placeholder="5" min="0" max="10" />
-            </div>
-          </div>
-        </div>
-      </div>
-
-      <!-- SECTION 6: VITALS SET 2 -->
-      <div class="card" style="margin-bottom:16px;">
-        <div class="card-header">
-          <h2>Vitals — Set 2</h2>
-          <span style="font-size:0.78rem; color:var(--charcoal-muted);">En Route / On Arrival</span>
-        </div>
-        <div class="card-body">
-          <div class="form-row" style="margin-bottom:12px;">
-            <div class="form-group">
-              <label class="form-label">Time</label>
-              <div style="display:flex; gap:6px;">
-                <input class="form-input" type="datetime-local" name="v2_time" style="flex:1;" />
-                <button type="button" class="btn btn-outline stamp-btn" data-target="v2_time" style="padding:6px 10px; font-size:0.75rem; white-space:nowrap;">Now</button>
-              </div>
-            </div>
-            <div class="form-group"></div>
-          </div>
-          <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(120px,1fr)); gap:12px;">
-            <div class="form-group" style="margin-bottom:0;">
-              <label class="form-label">BP Sys (mmHg)</label>
-              <input class="form-input" type="number" name="v2_bp_sys" placeholder="120" min="40" max="300" />
-            </div>
-            <div class="form-group" style="margin-bottom:0;">
-              <label class="form-label">BP Dia (mmHg)</label>
-              <input class="form-input" type="number" name="v2_bp_dia" placeholder="80" min="20" max="200" />
-            </div>
-            <div class="form-group" style="margin-bottom:0;">
-              <label class="form-label">HR (bpm)</label>
-              <input class="form-input" type="number" name="v2_hr" placeholder="80" min="20" max="300" />
-            </div>
-            <div class="form-group" style="margin-bottom:0;">
-              <label class="form-label">RR (/min)</label>
-              <input class="form-input" type="number" name="v2_rr" placeholder="16" min="4" max="60" />
-            </div>
-            <div class="form-group" style="margin-bottom:0;">
-              <label class="form-label">SpO₂ (%)</label>
-              <input class="form-input" type="number" name="v2_spo2" placeholder="98" min="50" max="100" />
-            </div>
-            <div class="form-group" style="margin-bottom:0;">
-              <label class="form-label">Temp (°C)</label>
-              <input class="form-input" type="number" step="0.1" name="v2_temp" placeholder="37.0" min="30" max="45" />
-            </div>
-            <div class="form-group" style="margin-bottom:0;">
-              <label class="form-label">GCS (3–15)</label>
-              <input class="form-input" type="number" name="v2_gcs" placeholder="15" min="3" max="15" />
-            </div>
-            <div class="form-group" style="margin-bottom:0;">
-              <label class="form-label">Pain (0–10)</label>
-              <input class="form-input" type="number" name="v2_pain" placeholder="5" min="0" max="10" />
-            </div>
-          </div>
-        </div>
-      </div>
-
-      <!-- SECTION 7: INTERVENTIONS -->
-      <div class="card" style="margin-bottom:16px;">
-        <div class="card-header"><h2>Interventions &amp; Treatment</h2></div>
-        <div class="card-body">
-          <div class="form-group">
-            <label class="form-label">Interventions</label>
-            <textarea class="form-textarea" name="interventions" placeholder="e.g. IV access x2 right AC 18G&#10;500ml Normal Saline bolus&#10;O₂ 15L/min NRB&#10;Morphine 5mg IV" style="min-height:96px;"></textarea>
-          </div>
-          <div class="form-group" style="margin-top:12px; margin-bottom:0;">
-            <label class="form-label">Additional Notes</label>
-            <textarea class="form-textarea" name="notes" placeholder="Any other relevant clinical observations..." style="min-height:72px;"></textarea>
-          </div>
-        </div>
-      </div>
-
-      <!-- SECTION 8: CREW -->
-      <div class="card" style="margin-bottom:16px;">
-        <div class="card-header"><h2>Crew</h2></div>
-        <div class="card-body">
-          <div class="form-group" style="margin-bottom:0;">
-            <label class="form-label">Crew Names &amp; Roles</label>
-            <input class="form-input" type="text" name="crew_names" placeholder="e.g. Ama Owusu (EMT-Basic), Kofi Mensah (Driver)" />
-          </div>
-        </div>
-      </div>
-
-      <!-- SECTION 9: GPS COORDINATES -->
-      <div class="card" style="margin-bottom:24px;">
-        <div class="card-header">
-          <h2>GPS Coordinates</h2>
-          <span style="font-size:0.78rem; color:var(--charcoal-muted);">Optional — enables route ETA &amp; weather context</span>
-        </div>
-        <div class="card-body">
-          <button type="button" id="gps-btn" class="btn btn-outline" style="margin-bottom:16px; font-size:0.8rem;">
-            Use My GPS for Pickup Location
-          </button>
-          <div class="form-row">
-            <div class="form-group" style="margin-bottom:0;">
-              <label class="form-label">Pickup Latitude</label>
-              <input class="form-input" type="number" step="any" name="pickup_lat" id="pickup_lat" placeholder="9.407" />
-            </div>
-            <div class="form-group" style="margin-bottom:0;">
-              <label class="form-label">Pickup Longitude</label>
-              <input class="form-input" type="number" step="any" name="pickup_lon" id="pickup_lon" placeholder="-0.853" />
-            </div>
-          </div>
-          <div class="form-row" style="margin-top:12px;">
-            <div class="form-group" style="margin-bottom:0;">
-              <label class="form-label">Destination Latitude</label>
-              <input class="form-input" type="number" step="any" name="dest_lat" placeholder="5.560" />
-            </div>
-            <div class="form-group" style="margin-bottom:0;">
-              <label class="form-label">Destination Longitude</label>
-              <input class="form-input" type="number" step="any" name="dest_lon" placeholder="-0.205" />
-            </div>
-          </div>
-        </div>
-      </div>
-
-      <div style="display:flex; gap:12px; justify-content:flex-end; margin-bottom:40px;">
-        <a href="/dashboard" class="btn btn-outline">Cancel</a>
-        <button type="submit" class="btn btn-primary">Save Case →</button>
-      </div>
-
-    </form>
-  </div>
 </Base>
 
 <script>
-  // Stamp-now buttons
-  document.querySelectorAll<HTMLButtonElement>('.stamp-btn').forEach(btn => {
-    btn.addEventListener('click', () => {
-      const name = btn.dataset.target!;
-      const input = document.querySelector<HTMLInputElement>(`[name="${name}"]`);
-      if (input) {
-        const now = new Date();
-        now.setSeconds(0, 0);
-        input.value = now.toISOString().slice(0, 16);
-      }
-    });
-  });
+    const TOTAL_STEPS = 7;
+    let current = 0;
 
-  // GPS fill
-  document.getElementById('gps-btn')?.addEventListener('click', () => {
-    const btn = document.getElementById('gps-btn') as HTMLButtonElement;
-    btn.disabled = true;
-    btn.textContent = 'Getting location…';
-    navigator.geolocation.getCurrentPosition(
-      pos => {
-        (document.getElementById('pickup_lat') as HTMLInputElement).value = pos.coords.latitude.toFixed(6);
-        (document.getElementById('pickup_lon') as HTMLInputElement).value = pos.coords.longitude.toFixed(6);
-        btn.textContent = 'GPS filled';
-      },
-      () => {
-        btn.disabled = false;
-        btn.textContent = 'GPS unavailable — enter manually';
-      }
+    const steps = document.querySelectorAll<HTMLElement>(".wizard-step");
+    const dots = document.querySelectorAll<HTMLElement>(
+        "#step-indicator .step-dot",
     );
-  });
+    const prevBtn = document.getElementById("prev-btn") as HTMLButtonElement;
+    const nextBtn = document.getElementById("next-btn") as HTMLButtonElement;
+    const saveBtn = document.getElementById("save-btn") as HTMLButtonElement;
+    const counter = document.getElementById("step-counter")!;
+
+    function goTo(index: number) {
+        steps[current].classList.remove("active");
+        dots[current].classList.remove("active");
+        dots[current].classList.add("completed");
+
+        if (index < current) {
+            // going back — remove completed from steps after index
+            for (let i = index; i <= current; i++) {
+                dots[i].classList.remove("completed");
+            }
+        }
+
+        current = index;
+        steps[current].classList.add("active");
+        dots[current].classList.remove("completed");
+        dots[current].classList.add("active");
+
+        prevBtn.style.display = current === 0 ? "none" : "";
+        nextBtn.style.display = current === TOTAL_STEPS - 1 ? "none" : "";
+        saveBtn.style.display = current === TOTAL_STEPS - 1 ? "" : "none";
+        counter.textContent = `Step ${current + 1} of ${TOTAL_STEPS}`;
+
+        window.scrollTo({ top: 0, behavior: "smooth" });
+    }
+
+    nextBtn.addEventListener("click", () => {
+        // Validate required fields on current step before advancing
+        const activeStep = steps[current];
+        const required = activeStep.querySelectorAll<
+            HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement
+        >("[required]");
+        let valid = true;
+        required.forEach((el) => {
+            if (!el.value.trim()) {
+                el.reportValidity();
+                valid = false;
+            }
+        });
+        if (!valid) return;
+
+        if (current < TOTAL_STEPS - 1) goTo(current + 1);
+    });
+
+    prevBtn.addEventListener("click", () => {
+        if (current > 0) goTo(current - 1);
+    });
+
+    // Stamp-now buttons
+    document
+        .querySelectorAll<HTMLButtonElement>(".stamp-btn")
+        .forEach((btn) => {
+            btn.addEventListener("click", () => {
+                const name = btn.dataset.target!;
+                const input = document.querySelector<HTMLInputElement>(
+                    `[name="${name}"]`,
+                );
+                if (input) {
+                    const now = new Date();
+                    now.setSeconds(0, 0);
+                    input.value = now.toISOString().slice(0, 16);
+                }
+            });
+        });
+
+    // GPS fill
+    document.getElementById("gps-btn")?.addEventListener("click", () => {
+        const btn = document.getElementById("gps-btn") as HTMLButtonElement;
+        btn.disabled = true;
+        btn.textContent = "Getting location…";
+        navigator.geolocation.getCurrentPosition(
+            (pos) => {
+                (
+                    document.getElementById("pickup_lat") as HTMLInputElement
+                ).value = pos.coords.latitude.toFixed(6);
+                (
+                    document.getElementById("pickup_lon") as HTMLInputElement
+                ).value = pos.coords.longitude.toFixed(6);
+                btn.textContent = "GPS filled";
+            },
+            () => {
+                btn.disabled = false;
+                btn.textContent = "GPS unavailable — enter manually";
+            },
+        );
+    });
+
+    // If server returned an error (page reloaded with error), jump to last step so user can resubmit
+    const hasError = document.querySelector('[style*="--red-bg"]');
+    if (hasError) {
+        for (let i = 0; i < TOTAL_STEPS - 1; i++) {
+            dots[i].classList.add("completed");
+        }
+        current = TOTAL_STEPS - 1;
+        steps.forEach((s, i) => s.classList.toggle("active", i === current));
+        dots.forEach((d, i) => {
+            d.classList.toggle("active", i === current);
+        });
+        prevBtn.style.display = "";
+        nextBtn.style.display = "none";
+        saveBtn.style.display = "";
+        counter.textContent = `Step ${TOTAL_STEPS} of ${TOTAL_STEPS}`;
+    }
 </script>
