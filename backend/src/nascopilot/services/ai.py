@@ -78,8 +78,21 @@ def build_prompt(case: dict, context: dict) -> tuple[str, str]:
         "Use clinical EMS language. Write in past tense, third person. "
         "If any data field is missing, write 'not documented' — never fabricate values. "
         "Respond with ONLY valid JSON. No markdown fences, no text outside the JSON. "
-        'Schema: {"pcr_text":"...","recommendation":"...","flags":['
-        '{"severity":"high|medium|low","issue":"...","action":"..."}]}'
+        'Schema: {'
+        '"pcr_text":"...",'
+        '"recommendation":"...",'
+        '"triage":{'
+        '"color":"red|orange|yellow|green",'
+        '"label":"Immediate|Urgent|Delayed|Minor",'
+        '"reasoning":"one sentence explaining the triage colour based on vitals and complaint",'
+        '"min_facility_level":"CHPS Compound|Health Centre|District Hospital|Regional Hospital|Teaching Hospital",'
+        '"time_critical_flags":["list of suspected time-critical conditions, empty array if none"]'
+        '},'
+        '"flags":[{"severity":"high|medium|low","issue":"...","action":"..."}]}'
+        " — triage color rules: red=life-threatening (airway/breathing/circulation compromise, GCS<9, shock vitals, eclampsia, major trauma); "
+        "orange=urgent but currently stable (altered vitals, suspected sepsis, obstetric emergency, moderate trauma); "
+        "yellow=delayed (stable vitals, chronic condition transfer, low acuity); "
+        "green=minor (walking wounded, routine non-urgent transfer)."
     )
 
     user_msg = f"""=== INCIDENT DETAILS ===

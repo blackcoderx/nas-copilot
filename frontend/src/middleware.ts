@@ -1,11 +1,17 @@
 import { defineMiddleware } from 'astro:middleware';
 
 const PUBLIC = ['/', '/login'];
+const PUBLIC_PREFIXES = ['/outcomes', '/logout'];
 
 export const onRequest = defineMiddleware(({ url, cookies, redirect }, next) => {
   const path  = url.pathname;
   const token = cookies.get('nas_token')?.value;
   const role  = cookies.get('nas_role')?.value ?? 'emt';
+
+  // Allow public prefix routes (outcomes, etc.) without any token check
+  if (PUBLIC_PREFIXES.some(p => path.startsWith(p))) {
+    return next();
+  }
 
   // Redirect authenticated users away from public pages
   if (PUBLIC.includes(path) && token) {

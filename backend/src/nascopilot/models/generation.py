@@ -18,5 +18,6 @@ class GenerationOut(BaseModel):
     facilities_json: Any | None
     route_json: Any | None
     weather_json: Any | None
+    triage_json: Any | None = None
     created_at: datetime
     flags: list[QualityFlag] = []

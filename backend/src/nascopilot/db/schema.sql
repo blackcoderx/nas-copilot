@@ -120,3 +120,38 @@ ALTER TABLE users ADD COLUMN IF NOT EXISTS full_name   TEXT;
 
 -- Idempotent migration for cases ownership
 ALTER TABLE cases ADD COLUMN IF NOT EXISTS created_by UUID REFERENCES users(id) ON DELETE SET NULL;
+
+-- ── Feature: Outcome Feedback Loop ────────────────────────────────────────────
+-- Unique token on each case so hospital staff can submit outcome without auth
+ALTER TABLE cases ADD COLUMN IF NOT EXISTS outcome_token TEXT;
+CREATE UNIQUE INDEX IF NOT EXISTS cases_outcome_token_unique ON cases(outcome_token) WHERE outcome_token IS NOT NULL;
+
+CREATE TABLE IF NOT EXISTS outcomes (
+  id                  UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  case_id             UUID NOT NULL REFERENCES cases(id) ON DELETE CASCADE,
+  patient_status      TEXT NOT NULL,  -- admitted | discharged | deceased | transferred
+  admission_ward      TEXT,
+  confirmed_diagnosis TEXT,
+  notes               TEXT,
+  submitted_at        TIMESTAMPTZ DEFAULT NOW()
+);
+-- One outcome per case
+CREATE UNIQUE INDEX IF NOT EXISTS outcomes_case_unique ON outcomes(case_id);
+
+-- ── Feature: AI Triage Severity Score ─────────────────────────────────────────
+ALTER TABLE generations ADD COLUMN IF NOT EXISTS triage_json JSONB;
+
+-- ── Feature: Facility Capacity Dashboard ──────────────────────────────────────
+CREATE TABLE IF NOT EXISTS facility_status (
+  id                   UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  hospital_id          UUID NOT NULL REFERENCES hospitals(id) ON DELETE CASCADE,
+  icu_beds_available   INT,
+  surgical_theater     TEXT DEFAULT 'available',  -- available | occupied | emergency_only
+  blood_bank           TEXT DEFAULT 'stocked',    -- stocked | low | out
+  maternity            TEXT DEFAULT 'available',  -- available | full
+  special_alert        TEXT,
+  updated_at           TIMESTAMPTZ DEFAULT NOW(),
+  expires_at           TIMESTAMPTZ DEFAULT NOW() + INTERVAL '4 hours'
+);
+-- One status row per hospital
+CREATE UNIQUE INDEX IF NOT EXISTS facility_status_hospital_unique ON facility_status(hospital_id);

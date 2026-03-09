@@ -1,4 +1,5 @@
 import json
+import secrets
 from uuid import UUID
 
 import asyncpg
@@ -10,6 +11,7 @@ async def insert_case(conn: asyncpg.Connection, data: dict, created_by: str | No
     def js(v):
         return json.dumps(v) if v else None
 
+    outcome_token = secrets.token_urlsafe(16)
     row = await conn.fetchrow(
         """
         INSERT INTO cases (
@@ -23,7 +25,7 @@ async def insert_case(conn: asyncpg.Connection, data: dict, created_by: str | No
             last_oral_intake, events_leading,
             vitals_set_1, vitals_set_2,
             interventions, notes, crew_names,
-            created_by
+            created_by, outcome_token
         ) VALUES (
             $1,$2,$3,$4,$5,$6,
             $7,$8,$9,$10,$11,$12,
@@ -33,7 +35,7 @@ async def insert_case(conn: asyncpg.Connection, data: dict, created_by: str | No
             $21,$22,$23,$24,$25,$26,
             $27,$28,
             $29,$30,$31,
-            $32
+            $32,$33
         )
         RETURNING *
         """,
@@ -51,7 +53,7 @@ async def insert_case(conn: asyncpg.Connection, data: dict, created_by: str | No
         data.get("past_medical_hx"), data.get("last_oral_intake"), data.get("events_leading"),
         js(data.get("vitals_set_1")), js(data.get("vitals_set_2")),
         data.get("interventions"), data.get("notes"), data.get("crew_names"),
-        created_by,
+        created_by, outcome_token,
     )
     return dict(row)
 
@@ -142,14 +144,15 @@ async def insert_generation(conn: asyncpg.Connection, data: dict) -> dict:
         """
         INSERT INTO generations (
             case_id, pcr_text, recommendation, model_name,
-            facilities_json, route_json, weather_json
-        ) VALUES ($1,$2,$3,$4,$5,$6,$7)
+            facilities_json, route_json, weather_json, triage_json
+        ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8)
         RETURNING *
         """,
         data["case_id"], data["pcr_text"], data.get("recommendation"), data.get("model_name"),
         json.dumps(data.get("facilities_json")) if data.get("facilities_json") else None,
         json.dumps(data.get("route_json")) if data.get("route_json") else None,
         json.dumps(data.get("weather_json")) if data.get("weather_json") else None,
+        json.dumps(data.get("triage_json")) if data.get("triage_json") else None,
     )
     return dict(row)
 
@@ -189,5 +192,99 @@ async def get_flags_for_generation(conn: asyncpg.Connection, generation_id: UUID
     rows = await conn.fetch(
         "SELECT * FROM quality_flags WHERE generation_id = $1 ORDER BY severity",
         generation_id,
+    )
+    return [dict(r) for r in rows]
+
+
+# ── Outcomes ───────────────────────────────────────────────────────────────────
+
+async def get_case_by_outcome_token(conn: asyncpg.Connection, token: str) -> dict | None:
+    row = await conn.fetchrow(
+        """
+        SELECT c.id, c.complaint, c.patient_name, c.patient_age, c.patient_sex,
+               c.pickup, c.destination, c.incident_time, c.status, c.outcome_token
+        FROM cases c
+        WHERE c.outcome_token = $1
+        """,
+        token,
+    )
+    return dict(row) if row else None
+
+
+async def get_outcome_by_case(conn: asyncpg.Connection, case_id: UUID) -> dict | None:
+    row = await conn.fetchrow(
+        "SELECT * FROM outcomes WHERE case_id = $1",
+        case_id,
+    )
+    return dict(row) if row else None
+
+
+async def upsert_outcome(conn: asyncpg.Connection, case_id: UUID, data: dict) -> dict:
+    row = await conn.fetchrow(
+        """
+        INSERT INTO outcomes (case_id, patient_status, admission_ward, confirmed_diagnosis, notes)
+        VALUES ($1, $2, $3, $4, $5)
+        ON CONFLICT (case_id) DO UPDATE
+          SET patient_status      = EXCLUDED.patient_status,
+              admission_ward      = EXCLUDED.admission_ward,
+              confirmed_diagnosis = EXCLUDED.confirmed_diagnosis,
+              notes               = EXCLUDED.notes,
+              submitted_at        = NOW()
+        RETURNING *
+        """,
+        case_id,
+        data["patient_status"],
+        data.get("admission_ward"),
+        data.get("confirmed_diagnosis"),
+        data.get("notes"),
+    )
+    return dict(row)
+
+
+# ── Facility Status ────────────────────────────────────────────────────────────
+
+async def upsert_facility_status(conn: asyncpg.Connection, hospital_id: UUID, data: dict) -> dict:
+    row = await conn.fetchrow(
+        """
+        INSERT INTO facility_status
+            (hospital_id, icu_beds_available, surgical_theater, blood_bank, maternity, special_alert,
+             updated_at, expires_at)
+        VALUES ($1, $2, $3, $4, $5, $6, NOW(), NOW() + INTERVAL '4 hours')
+        ON CONFLICT (hospital_id) DO UPDATE
+          SET icu_beds_available = EXCLUDED.icu_beds_available,
+              surgical_theater   = EXCLUDED.surgical_theater,
+              blood_bank         = EXCLUDED.blood_bank,
+              maternity          = EXCLUDED.maternity,
+              special_alert      = EXCLUDED.special_alert,
+              updated_at         = NOW(),
+              expires_at         = NOW() + INTERVAL '4 hours'
+        RETURNING *
+        """,
+        hospital_id,
+        data.get("icu_beds_available"),
+        data.get("surgical_theater", "available"),
+        data.get("blood_bank", "stocked"),
+        data.get("maternity", "available"),
+        data.get("special_alert"),
+    )
+    return dict(row)
+
+
+async def get_facility_status(conn: asyncpg.Connection, hospital_id: UUID) -> dict | None:
+    row = await conn.fetchrow(
+        "SELECT fs.*, h.name AS hospital_name FROM facility_status fs JOIN hospitals h ON h.id = fs.hospital_id WHERE fs.hospital_id = $1",
+        hospital_id,
+    )
+    return dict(row) if row else None
+
+
+async def get_all_facility_statuses(conn: asyncpg.Connection) -> list[dict]:
+    rows = await conn.fetch(
+        """
+        SELECT fs.*, h.name AS hospital_name
+        FROM facility_status fs
+        JOIN hospitals h ON h.id = fs.hospital_id
+        ORDER BY h.name
+        """,
     )
     return [dict(r) for r in rows]

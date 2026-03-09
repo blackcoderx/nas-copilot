@@ -50,6 +50,7 @@ async def run_generate(conn: asyncpg.Connection, case_id: UUID) -> GenerationOut
 
     pcr_text = ai_result.get("pcr_text", "")
     recommendation = ai_result.get("recommendation")
+    triage = ai_result.get("triage") or None
 
     # Merge deterministic rule-based flags with AI-generated flags
     # Deduplicate by issue text so the same gap isn't flagged twice
@@ -67,6 +68,7 @@ async def run_generate(conn: asyncpg.Connection, case_id: UUID) -> GenerationOut
         "facilities_json": facilities or None,
         "route_json": route or None,
         "weather_json": weather or None,
+        "triage_json": triage,
     }
     gen_row = await queries.insert_generation(conn, gen_data)
     gen_id = gen_row["id"]

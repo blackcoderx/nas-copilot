@@ -22,6 +22,16 @@ try {
 const c = data?.case;
 const gen = data?.latest_generation;
 const flags: any[] = gen?.flags ?? [];
+const triage = gen?.triage_json ?? null;
+
+// Fetch outcome for share link (non-critical)
+let outcome: any = null;
+if (c?.outcome_token) {
+  try {
+    const outRes = await fetch(`${API}/outcomes/${c.outcome_token}`);
+    if (outRes.ok) { const outData = await outRes.json(); outcome = outData?.outcome ?? null; }
+  } catch { /* non-critical */ }
+}
 
 function fmtDate(iso: string) {
   return new Date(iso).toLocaleString('en-GB', {
@@ -61,6 +71,12 @@ const sortedFlags = [...flags].sort((a, b) =>
 );
 
 const hasOps = route || weather?.pickup || weather?.destination || facilities.length > 0;
+
+// Triage colour helpers (computed in frontmatter to avoid type annotations inside JSX)
+const triageColors: Record<string, string> = { red: '#dc2626', orange: '#d97706', yellow: '#ca8a04', green: '#16a34a' };
+const triageBg: Record<string, string>     = { red: 'var(--red-bg)', orange: '#fff7ed', yellow: '#fefce8', green: 'var(--green-soft)' };
+const triageCol = triage ? (triageColors[triage.color] ?? 'var(--charcoal)') : '';
+const triageBgc = triage ? (triageBg[triage.color]    ?? 'var(--surface)')  : '';
 ---
 
 <Base title={c ? c.complaint : 'Case'}>
@@ -283,6 +299,40 @@ const hasOps = route || weather?.pickup || weather?.destination || facilities.le
             </div>
           )}
 
+          <!-- Triage Severity Score -->
+          {triage && (
+            <div class="card fade-in" style="animation-delay:20ms;">
+              <div class="card-header">
+                <h2>AI Triage Assessment</h2>
+                <span style={`background:${triageBgc}; color:${triageCol}; font-weight:700; font-size:0.78rem; text-transform:uppercase; letter-spacing:0.06em; padding:4px 12px; border-radius:20px; border:1.5px solid ${triageCol};`}>
+                  {triage.color?.toUpperCase()} &mdash; {triage.label}
+                </span>
+              </div>
+              <div class="card-body">
+                <div style="display:grid; grid-template-columns:1fr 1fr; gap:14px 24px; font-size:0.875rem;">
+                  <div style="grid-column:1/-1;">
+                    <div class="form-label">Reasoning</div>
+                    <div style="line-height:1.6;">{triage.reasoning}</div>
+                  </div>
+                  <div>
+                    <div class="form-label">Minimum Facility Required</div>
+                    <div style="font-weight:600;">{triage.min_facility_level}</div>
+                  </div>
+                  {triage.time_critical_flags?.length > 0 && (
+                    <div>
+                      <div class="form-label">Time-Critical Conditions</div>
+                      <div style="display:flex; flex-wrap:wrap; gap:6px; margin-top:4px;">
+                        {triage.time_critical_flags.map((f: string) => (
+                          <span style="background:var(--red-bg); color:var(--red-text); font-size:0.75rem; padding:2px 8px; border-radius:20px; font-weight:500;">{f}</span>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
+          )}
+
           <!-- PCR Output -->
           <div id="pcr-card" class="card fade-in">
             <div class="card-header">
@@ -400,6 +450,68 @@ const hasOps = route || weather?.pickup || weather?.destination || facilities.le
               </div>
             </div>
           )}
+          <!-- Outcome Feedback -->
+          {c?.outcome_token && (
+            <div class="card fade-in" style="animation-delay:200ms;">
+              <div class="card-header">
+                <h2>Patient Outcome</h2>
+                {outcome && (
+                  <span style="font-size:0.75rem; background:var(--green-soft); color:var(--green-dark); padding:2px 10px; border-radius:20px; font-weight:600;">
+                    Outcome received
+                  </span>
+                )}
+              </div>
+              <div class="card-body">
+                {outcome ? (
+                  <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px 24px; font-size:0.875rem;">
+                    <div>
+                      <div class="form-label">Patient Status</div>
+                      <div style="font-weight:600; text-transform:capitalize;">{outcome.patient_status}</div>
+                    </div>
+                    {outcome.admission_ward && (
+                      <div>
+                        <div class="form-label">Admission Ward</div>
+                        <div>{outcome.admission_ward}</div>
+                      </div>
+                    )}
+                    {outcome.confirmed_diagnosis && (
+                      <div style="grid-column:1/-1;">
+                        <div class="form-label">Confirmed Diagnosis</div>
+                        <div style="font-weight:500;">{outcome.confirmed_diagnosis}</div>
+                      </div>
+                    )}
+                    {outcome.notes && (
+                      <div style="grid-column:1/-1;">
+                        <div class="form-label">Notes from Hospital</div>
+                        <div style="white-space:pre-line;">{outcome.notes}</div>
+                      </div>
+                    )}
+                    <div style="grid-column:1/-1; font-size:0.78rem; color:var(--charcoal-muted);">
+                      Submitted by receiving hospital
+                    </div>
+                  </div>
+                ) : (
+                  <div>
+                    <p style="font-size:0.85rem; color:var(--charcoal-muted); margin-bottom:16px;">
+                      No outcome submitted yet. Share this link with the receiving hospital so they can record what happened to this patient.
+                    </p>
+                    <div style="display:flex; align-items:center; gap:10px; flex-wrap:wrap;">
+                      <input
+                        id="outcome-url"
+                        type="text"
+                        class="form-control"
+                        style="flex:1; min-width:200px; font-size:0.8rem; font-family:monospace;"
+                        value={`/outcomes/${c.outcome_token}`}
+                        readonly
+                      />
+                      <button class="btn btn-outline" onclick="copyOutcomeLink()" style="white-space:nowrap;">Copy Link</button>
+                    </div>
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+
 
         </div>
       </>
@@ -469,8 +581,19 @@ const hasOps = route || weather?.pickup || weather?.destination || facilities.le
     });
   }
 
+  function copyOutcomeLink() {
+    const inp = document.getElementById('outcome-url') as HTMLInputElement;
+    if (!inp) return;
+    inp.value = window.location.origin + inp.value;
+    navigator.clipboard.writeText(inp.value).then(() => {
+      const btn = document.querySelector('[onclick="copyOutcomeLink()"]') as HTMLButtonElement;
+      if (btn) { btn.textContent = 'Copied!'; setTimeout(() => { btn.textContent = 'Copy Link'; }, 1800); }
+    });
+  }
+
   // expose to inline onclick
   (window as any).handleGenerate = handleGenerate;
   (window as any).handleFinalize = handleFinalize;
   (window as any).copyPCR = copyPCR;
+  (window as any).copyOutcomeLink = copyOutcomeLink;
 </script>

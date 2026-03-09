@@ -51,7 +51,10 @@ function timeAgo(iso: string) {
           Manage your hospital's staff and view all cases.
         </p>
       </div>
-      <a href="/admin/users/new" class="btn btn-primary">+ Add Staff Member</a>
+      <div style="display:flex; gap:8px; flex-wrap:wrap;">
+        <a href="/admin/facility-status" class="btn btn-outline">Facility Status</a>
+        <a href="/admin/users/new" class="btn btn-primary">+ Add Staff Member</a>
+      </div>
     </div>
 
     {fetchError && (

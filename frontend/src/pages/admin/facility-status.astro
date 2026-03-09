@@ -1,0 +1,287 @@
+---
+import Base from '../../layouts/Base.astro';
+
+const API   = import.meta.env.PUBLIC_API_URL ?? 'http://localhost:8000';
+const token = Astro.cookies.get('nas_token')?.value;
+
+let current: any = null;
+let allStatuses: any[] = [];
+let fetchError = '';
+let successMsg = '';
+let submitError = '';
+
+// Handle status form POST
+if (Astro.request.method === 'POST') {
+  try {
+    const form = await Astro.request.formData();
+    const body: Record<string, any> = {
+      surgical_theater: form.get('surgical_theater') as string,
+      blood_bank:       form.get('blood_bank') as string,
+      maternity:        form.get('maternity') as string,
+    };
+    const icu = form.get('icu_beds_available') as string;
+    if (icu !== '') body.icu_beds_available = parseInt(icu, 10);
+    const alert = form.get('special_alert') as string;
+    if (alert.trim()) body.special_alert = alert.trim();
+
+    const res = await fetch(`${API}/facilities/status`, {
+      method: 'PUT',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify(body),
+    });
+    if (res.ok) {
+      current = await res.json();
+      successMsg = 'Facility status updated. It will auto-expire in 4 hours.';
+    } else if (res.status === 401) {
+      return Astro.redirect('/login');
+    } else {
+      const err = await res.json().catch(() => ({}));
+      submitError = err.detail ?? `Update failed (${res.status})`;
+    }
+  } catch (e: any) {
+    submitError = e.message ?? 'Could not reach backend';
+  }
+}
+
+// Fetch current status and all statuses
+try {
+  const [allRes] = await Promise.all([
+    fetch(`${API}/facilities/status`),
+  ]);
+  if (allRes.ok) allStatuses = await allRes.json();
+} catch {
+  fetchError = 'Could not load facility statuses';
+}
+
+// Find own hospital's current status from the list
+// We'll rely on the PUT response or the list
+if (!current) {
+  // Try to get from all statuses — the admin's hospital will be in there
+  // We identify it after loading (client side is fine too)
+}
+
+const theaterLabels: Record<string, string> = {
+  available:      'Available',
+  occupied:       'Occupied',
+  emergency_only: 'Emergency Only',
+};
+const bloodLabels: Record<string, string> = {
+  stocked: 'Stocked',
+  low:     'Low',
+  out:     'Out / Empty',
+};
+const maternityLabels: Record<string, string> = {
+  available: 'Available',
+  full:      'Full',
+};
+
+function statusColor(val: string, type: string): string {
+  if (type === 'theater') {
+    if (val === 'available') return 'var(--green-dark)';
+    if (val === 'emergency_only') return 'var(--amber-text)';
+    return 'var(--red-text)';
+  }
+  if (type === 'blood') {
+    if (val === 'stocked') return 'var(--green-dark)';
+    if (val === 'low') return 'var(--amber-text)';
+    return 'var(--red-text)';
+  }
+  if (type === 'maternity') {
+    return val === 'available' ? 'var(--green-dark)' : 'var(--amber-text)';
+  }
+  return 'var(--charcoal-muted)';
+}
+
+function fmtDate(iso: string) {
+  return new Date(iso).toLocaleString('en-GB', {
+    day: '2-digit', month: 'short', year: 'numeric',
+    hour: '2-digit', minute: '2-digit',
+  });
+}
+---
+
+<Base title="Facility Capacity Status">
+  <div class="page">
+
+    <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:28px; flex-wrap:wrap; gap:12px;">
+      <div>
+        <a href="/admin" style="font-size:0.8rem; color:var(--charcoal-muted); display:inline-flex; align-items:center; gap:4px; margin-bottom:8px;">
+          ← Admin Panel
+        </a>
+        <h1>Facility Capacity Status</h1>
+        <p style="font-size:0.85rem; color:var(--charcoal-muted); margin-top:4px;">
+          Update your hospital's current capacity so NAS crews can make informed transport decisions.
+        </p>
+      </div>
+    </div>
+
+    {fetchError && (
+      <div style="background:var(--red-bg); color:var(--red-text); border:1px solid #fecaca; border-radius:var(--radius-card); padding:14px 18px; margin-bottom:20px; font-size:0.85rem;">
+        {fetchError}
+      </div>
+    )}
+
+    {successMsg && (
+      <div style="background:var(--green-soft); color:var(--green-dark); border:1px solid #c3ddd4; border-radius:var(--radius-card); padding:14px 18px; margin-bottom:20px; font-size:0.85rem; font-weight:500;">
+        {successMsg}
+      </div>
+    )}
+
+    {submitError && (
+      <div style="background:var(--red-bg); color:var(--red-text); border:1px solid #fecaca; border-radius:var(--radius-card); padding:14px 18px; margin-bottom:20px; font-size:0.85rem;">
+        {submitError}
+      </div>
+    )}
+
+    <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(360px, 1fr)); gap:20px; align-items:start;">
+
+      <!-- Update Form -->
+      <div class="card">
+        <div class="card-header">
+          <h2>Update Your Hospital Status</h2>
+        </div>
+        <div class="card-body">
+          <p style="font-size:0.82rem; color:var(--charcoal-muted); margin-bottom:20px; line-height:1.6;">
+            Status expires automatically after <strong>4 hours</strong>. Update it at the start of each shift or whenever capacity changes.
+          </p>
+          <form method="POST" style="display:flex; flex-direction:column; gap:16px;">
+
+            <div class="form-group">
+              <label class="form-label" for="icu_beds_available">ICU Beds Available</label>
+              <input
+                type="number"
+                id="icu_beds_available"
+                name="icu_beds_available"
+                class="form-input"
+                min="0"
+                placeholder="e.g. 3"
+                value={current?.icu_beds_available ?? ''}
+              />
+              <div style="font-size:0.75rem; color:var(--charcoal-muted); margin-top:2px;">Leave blank if your facility has no ICU</div>
+            </div>
+
+            <div class="form-group">
+              <label class="form-label" for="surgical_theater">Surgical Theatre</label>
+              <select id="surgical_theater" name="surgical_theater" class="form-select">
+                <option value="available"      selected={!current || current.surgical_theater === 'available'}>Available</option>
+                <option value="occupied"       selected={current?.surgical_theater === 'occupied'}>Occupied</option>
+                <option value="emergency_only" selected={current?.surgical_theater === 'emergency_only'}>Emergency Only</option>
+              </select>
+            </div>
+
+            <div class="form-group">
+              <label class="form-label" for="blood_bank">Blood Bank</label>
+              <select id="blood_bank" name="blood_bank" class="form-select">
+                <option value="stocked" selected={!current || current.blood_bank === 'stocked'}>Stocked</option>
+                <option value="low"     selected={current?.blood_bank === 'low'}>Low</option>
+                <option value="out"     selected={current?.blood_bank === 'out'}>Out / Empty</option>
+              </select>
+            </div>
+
+            <div class="form-group">
+              <label class="form-label" for="maternity">Maternity / Obstetric Care</label>
+              <select id="maternity" name="maternity" class="form-select">
+                <option value="available" selected={!current || current.maternity === 'available'}>Available</option>
+                <option value="full"      selected={current?.maternity === 'full'}>Full</option>
+              </select>
+            </div>
+
+            <div class="form-group">
+              <label class="form-label" for="special_alert">Special Alert <span style="color:var(--charcoal-muted); font-weight:400;">(optional)</span></label>
+              <textarea
+                id="special_alert"
+                name="special_alert"
+                class="form-textarea"
+                rows="3"
+                placeholder="e.g. Malaria surge — paediatric ward at capacity. Divert stable cases."
+              >{current?.special_alert ?? ''}</textarea>
+            </div>
+
+            <button type="submit" class="btn btn-primary" style="align-self:flex-start;">
+              Update Status
+            </button>
+          </form>
+        </div>
+      </div>
+
+      <!-- Live Board: All Facilities -->
+      <div class="card">
+        <div class="card-header">
+          <h2>Live Capacity Board</h2>
+          <span style="font-size:0.75rem; color:var(--charcoal-muted);">All hospitals · Updated now</span>
+        </div>
+        <div class="card-body" style="padding:0;">
+          {allStatuses.length === 0 ? (
+            <div class="empty" style="padding:32px;">
+              No hospitals have reported status yet.
+            </div>
+          ) : (
+            <div style="display:flex; flex-direction:column; gap:0;">
+              {allStatuses.map((s: any, i: number) => {
+                const expired = new Date(s.expires_at) < new Date();
+                return (
+                  <div
+                    style={`padding:16px 20px; border-bottom:1px solid var(--border); ${i === allStatuses.length - 1 ? 'border-bottom:none;' : ''} ${expired ? 'opacity:0.55;' : ''}`}
+                  >
+                    <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:8px;">
+                      <div style="font-weight:600; font-size:0.875rem;">{s.hospital_name}</div>
+                      {expired ? (
+                        <span style="font-size:0.7rem; background:var(--surface); color:var(--charcoal-muted); padding:2px 7px; border-radius:20px;">Expired</span>
+                      ) : (
+                        <span style="font-size:0.7rem; background:var(--green-soft); color:var(--green-dark); padding:2px 7px; border-radius:20px;">Live</span>
+                      )}
+                    </div>
+
+                    <div style="display:grid; grid-template-columns:repeat(3, 1fr); gap:8px; font-size:0.78rem; margin-bottom:8px;">
+                      <div>
+                        <div style="color:var(--charcoal-muted); margin-bottom:2px;">Theatre</div>
+                        <div style={`font-weight:500; color:${statusColor(s.surgical_theater, 'theater')};`}>
+                          {theaterLabels[s.surgical_theater] ?? s.surgical_theater}
+                        </div>
+                      </div>
+                      <div>
+                        <div style="color:var(--charcoal-muted); margin-bottom:2px;">Blood Bank</div>
+                        <div style={`font-weight:500; color:${statusColor(s.blood_bank, 'blood')};`}>
+                          {bloodLabels[s.blood_bank] ?? s.blood_bank}
+                        </div>
+                      </div>
+                      <div>
+                        <div style="color:var(--charcoal-muted); margin-bottom:2px;">Maternity</div>
+                        <div style={`font-weight:500; color:${statusColor(s.maternity, 'maternity')};`}>
+                          {maternityLabels[s.maternity] ?? s.maternity}
+                        </div>
+                      </div>
+                    </div>
+
+                    {s.icu_beds_available != null && (
+                      <div style="font-size:0.78rem; margin-bottom:6px;">
+                        <span style="color:var(--charcoal-muted);">ICU beds available: </span>
+                        <span style={`font-weight:600; color:${s.icu_beds_available > 0 ? 'var(--green-dark)' : 'var(--red-text)'};`}>
+                          {s.icu_beds_available}
+                        </span>
+                      </div>
+                    )}
+
+                    {s.special_alert && (
+                      <div style="background:var(--amber-bg); color:var(--amber-text); border-radius:var(--radius-input); padding:6px 10px; font-size:0.78rem; margin-bottom:6px;">
+                        ⚠ {s.special_alert}
+                      </div>
+                    )}
+
+                    <div style="font-size:0.72rem; color:var(--charcoal-muted);">
+                      Updated {fmtDate(s.updated_at)} · Expires {fmtDate(s.expires_at)}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
+      </div>
+
+    </div>
+  </div>
+</Base>

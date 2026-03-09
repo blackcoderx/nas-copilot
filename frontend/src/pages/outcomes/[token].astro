@@ -1,0 +1,261 @@
+---
+import Base from '../../layouts/Base.astro';
+
+const API = import.meta.env.PUBLIC_API_URL ?? 'http://localhost:8000';
+const { token } = Astro.params;
+
+let pageData: any = null;
+let fetchError = '';
+let submitted = false;
+let submitError = '';
+
+// Handle outcome form POST
+if (Astro.request.method === 'POST') {
+  try {
+    const form = await Astro.request.formData();
+    const body = {
+      patient_status:      form.get('patient_status') as string,
+      admission_ward:      (form.get('admission_ward') as string) || null,
+      confirmed_diagnosis: (form.get('confirmed_diagnosis') as string) || null,
+      notes:               (form.get('notes') as string) || null,
+    };
+    const res = await fetch(`${API}/outcomes/${token}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    });
+    if (res.ok) {
+      submitted = true;
+    } else {
+      const err = await res.json().catch(() => ({}));
+      submitError = err.detail ?? `Submission failed (${res.status})`;
+    }
+  } catch (e: any) {
+    submitError = e.message ?? 'Could not reach server';
+  }
+}
+
+// Always fetch the case + existing outcome
+try {
+  const res = await fetch(`${API}/outcomes/${token}`);
+  if (res.ok) pageData = await res.json();
+  else if (res.status === 404) fetchError = 'This outcome link is not valid or has expired.';
+  else fetchError = `Error loading case (${res.status})`;
+} catch {
+  fetchError = 'Could not reach server';
+}
+
+const c = pageData?.case;
+const existingOutcome = pageData?.outcome;
+
+const statusLabels: Record<string, string> = {
+  admitted:    'Admitted',
+  discharged:  'Discharged',
+  deceased:    'Deceased',
+  transferred: 'Transferred again',
+};
+
+function fmtDate(iso: string) {
+  return new Date(iso).toLocaleString('en-GB', {
+    day: '2-digit', month: 'short', year: 'numeric',
+    hour: '2-digit', minute: '2-digit',
+  });
+}
+---
+
+<Base title="Submit Patient Outcome">
+  <div class="page" style="max-width:640px; margin:0 auto;">
+
+    <!-- NAS Brand header -->
+    <div style="text-align:center; margin-bottom:32px; padding-top:8px;">
+      <div style="font-size:1.1rem; font-weight:700; color:var(--charcoal); letter-spacing:-0.01em;">
+        NAS Copilot
+      </div>
+      <div style="font-size:0.8rem; color:var(--charcoal-muted); margin-top:2px;">
+        Ghana National Ambulance Service
+      </div>
+    </div>
+
+    {fetchError && (
+      <div style="background:var(--red-bg); color:var(--red-text); border:1px solid #fecaca; border-radius:var(--radius-card); padding:20px 24px; text-align:center;">
+        <div style="font-size:1.1rem; font-weight:600; margin-bottom:4px;">Link Not Found</div>
+        <div style="font-size:0.875rem;">{fetchError}</div>
+      </div>
+    )}
+
+    {c && (
+      <>
+        <!-- Case Summary Card -->
+        <div class="card" style="margin-bottom:20px;">
+          <div class="card-header">
+            <h2 style="font-size:0.95rem;">Patient Case Summary</h2>
+          </div>
+          <div class="card-body" style="display:grid; grid-template-columns:1fr 1fr; gap:12px 24px;">
+            <div>
+              <div class="form-label">Patient</div>
+              <div style="font-size:0.875rem; font-weight:500;">
+                {c.patient_name ?? 'Unknown'}
+                {c.patient_age ? ` · ${c.patient_age}y` : ''}
+                {c.patient_sex ? ` · ${c.patient_sex}` : ''}
+              </div>
+            </div>
+            <div>
+              <div class="form-label">Incident Time</div>
+              <div style="font-size:0.875rem;">{fmtDate(c.incident_time)}</div>
+            </div>
+            <div style="grid-column:1/-1;">
+              <div class="form-label">Chief Complaint</div>
+              <div style="font-size:0.875rem; font-weight:500;">{c.complaint}</div>
+            </div>
+            <div>
+              <div class="form-label">From</div>
+              <div style="font-size:0.875rem;">{c.pickup}</div>
+            </div>
+            <div>
+              <div class="form-label">To</div>
+              <div style="font-size:0.875rem;">{c.destination}</div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Already submitted state -->
+        {(submitted || existingOutcome) && !submitError && (
+          <div class="card fade-in" style="margin-bottom:20px; border:2px solid var(--green-dark);">
+            <div class="card-body" style="text-align:center; padding:28px;">
+              <div style="font-size:2rem; margin-bottom:8px;">✓</div>
+              <div style="font-size:1rem; font-weight:600; color:var(--green-dark); margin-bottom:4px;">
+                Outcome Recorded
+              </div>
+              <div style="font-size:0.85rem; color:var(--charcoal-muted);">
+                Thank you. The NAS crew has been notified of this patient's outcome.
+              </div>
+
+              {existingOutcome && (
+                <div style="margin-top:20px; background:var(--surface); border-radius:var(--radius-input); padding:16px; text-align:left;">
+                  <div style="display:grid; grid-template-columns:1fr 1fr; gap:10px 20px; font-size:0.85rem;">
+                    <div>
+                      <div class="form-label">Status</div>
+                      <div style="font-weight:600;">{statusLabels[existingOutcome.patient_status] ?? existingOutcome.patient_status}</div>
+                    </div>
+                    {existingOutcome.admission_ward && (
+                      <div>
+                        <div class="form-label">Ward</div>
+                        <div>{existingOutcome.admission_ward}</div>
+                      </div>
+                    )}
+                    {existingOutcome.confirmed_diagnosis && (
+                      <div style="grid-column:1/-1;">
+                        <div class="form-label">Confirmed Diagnosis</div>
+                        <div>{existingOutcome.confirmed_diagnosis}</div>
+                      </div>
+                    )}
+                    {existingOutcome.notes && (
+                      <div style="grid-column:1/-1;">
+                        <div class="form-label">Notes for EMT</div>
+                        <div style="white-space:pre-line;">{existingOutcome.notes}</div>
+                      </div>
+                    )}
+                    <div style="grid-column:1/-1; color:var(--charcoal-muted); font-size:0.78rem;">
+                      Submitted {fmtDate(existingOutcome.submitted_at)}
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              <div style="margin-top:16px; font-size:0.8rem; color:var(--charcoal-muted);">
+                You can update this outcome by re-submitting the form below.
+              </div>
+            </div>
+          </div>
+        )}
+
+        <!-- Submission error -->
+        {submitError && (
+          <div style="background:var(--red-bg); color:var(--red-text); border:1px solid #fecaca; border-radius:var(--radius-card); padding:12px 16px; margin-bottom:16px; font-size:0.85rem;">
+            {submitError}
+          </div>
+        )}
+
+        <!-- Outcome Form -->
+        {c.status === 'FINAL' || true ? (
+          <div class="card">
+            <div class="card-header">
+              <h2 style="font-size:0.95rem;">
+                {existingOutcome ? 'Update Patient Outcome' : 'Submit Patient Outcome'}
+              </h2>
+            </div>
+            <div class="card-body">
+              <p style="font-size:0.83rem; color:var(--charcoal-muted); margin-bottom:20px; line-height:1.6;">
+                Please fill in what happened to this patient after arrival. The NAS crew who transported
+                this patient will be notified — this helps them learn and improve care quality.
+              </p>
+              <form method="POST" style="display:flex; flex-direction:column; gap:18px;">
+
+                <div class="form-group">
+                  <label class="form-label" for="patient_status">Patient Status <span style="color:var(--red-text);">*</span></label>
+                  <select id="patient_status" name="patient_status" class="form-control" required>
+                    <option value="" disabled selected={!existingOutcome}>Select outcome…</option>
+                    <option value="admitted"    selected={existingOutcome?.patient_status === 'admitted'}>Admitted</option>
+                    <option value="discharged"  selected={existingOutcome?.patient_status === 'discharged'}>Discharged</option>
+                    <option value="deceased"    selected={existingOutcome?.patient_status === 'deceased'}>Deceased</option>
+                    <option value="transferred" selected={existingOutcome?.patient_status === 'transferred'}>Transferred again</option>
+                  </select>
+                </div>
+
+                <div class="form-group">
+                  <label class="form-label" for="admission_ward">Admission Ward <span style="color:var(--charcoal-muted); font-weight:400;">(optional)</span></label>
+                  <input
+                    type="text"
+                    id="admission_ward"
+                    name="admission_ward"
+                    class="form-control"
+                    placeholder="e.g. ICU, Surgical Ward, Maternity"
+                    value={existingOutcome?.admission_ward ?? ''}
+                  />
+                </div>
+
+                <div class="form-group">
+                  <label class="form-label" for="confirmed_diagnosis">Confirmed Diagnosis <span style="color:var(--charcoal-muted); font-weight:400;">(optional)</span></label>
+                  <input
+                    type="text"
+                    id="confirmed_diagnosis"
+                    name="confirmed_diagnosis"
+                    class="form-control"
+                    placeholder="e.g. Eclampsia, Ruptured spleen, Severe malaria"
+                    value={existingOutcome?.confirmed_diagnosis ?? ''}
+                  />
+                </div>
+
+                <div class="form-group">
+                  <label class="form-label" for="notes">Notes for the EMT <span style="color:var(--charcoal-muted); font-weight:400;">(optional)</span></label>
+                  <textarea
+                    id="notes"
+                    name="notes"
+                    class="form-control"
+                    rows="3"
+                    placeholder="Any feedback or clinical notes for the ambulance crew…"
+                    style="resize:vertical;"
+                  >{existingOutcome?.notes ?? ''}</textarea>
+                </div>
+
+                <button type="submit" class="btn btn-primary" style="align-self:flex-start;">
+                  {existingOutcome ? 'Update Outcome' : 'Submit Outcome'}
+                </button>
+              </form>
+            </div>
+          </div>
+        ) : (
+          <div class="card">
+            <div class="card-body" style="text-align:center; padding:28px; color:var(--charcoal-muted); font-size:0.875rem;">
+              This case has not yet been finalized by the NAS crew.
+            </div>
+          </div>
+        )}
+      </>
+    )}
+
+    <div style="text-align:center; margin-top:32px; font-size:0.75rem; color:var(--charcoal-muted);">
+      NAS Copilot · Ghana National Ambulance Service · Confidential patient information
+    </div>
+  </div>
+</Base>
