@@ -930,65 +930,59 @@ Morphine 5mg IV"
                         >
                     </div>
                     <div class="card-body">
+                        <!-- Hidden inputs — same names as before, submitted with the form -->
+                        <input type="hidden" name="pickup_lat" id="pickup_lat" />
+                        <input type="hidden" name="pickup_lon" id="pickup_lon" />
+                        <input type="hidden" name="dest_lat"   id="dest_lat"   />
+                        <input type="hidden" name="dest_lon"   id="dest_lon"   />
+
                         <button
                             type="button"
                             id="gps-btn"
                             class="btn btn-outline"
                             style="margin-bottom:16px; font-size:0.8rem;"
                         >
-                            Use My GPS for Pickup Location
+                            📍 Use My GPS for Pickup
                         </button>
-                        <div class="form-row">
-                            <div class="form-group" style="margin-bottom:0;">
-                                <label class="form-label">Pickup Latitude</label
-                                >
-                                <input
-                                    class="form-input"
-                                    type="number"
-                                    step="any"
-                                    name="pickup_lat"
-                                    id="pickup_lat"
-                                    placeholder="9.407"
-                                />
+
+                        <div class="form-row" style="margin-top:4px;">
+                            <div>
+                                <div class="form-label" style="margin-bottom:6px;">Pickup Location</div>
+                                <div style="display:flex; gap:6px; margin-bottom:6px;">
+                                    <input
+                                        type="text"
+                                        id="search-pickup"
+                                        class="form-input"
+                                        placeholder="Search pickup (e.g. Kumasi, Korle Bu)"
+                                        style="font-size:0.8rem;"
+                                        autocomplete="off"
+                                    />
+                                    <button type="button" id="search-pickup-btn" class="btn btn-outline" style="white-space:nowrap; font-size:0.8rem;">Search</button>
+                                </div>
+                                <div id="search-pickup-results" style="display:none; background:var(--surface); border:1px solid var(--border); border-radius:6px; margin-bottom:6px; max-height:160px; overflow-y:auto; font-size:0.8rem;"></div>
+                                <div id="map-pickup" style="height:260px; border-radius:6px; border:1px solid var(--border);"></div>
+                                <div id="pickup-coords" style="font-size:0.75rem; color:var(--charcoal-muted); margin-top:4px;">
+                                    Tap the map or search to pin pickup location
+                                </div>
                             </div>
-                            <div class="form-group" style="margin-bottom:0;">
-                                <label class="form-label"
-                                    >Pickup Longitude</label
-                                >
-                                <input
-                                    class="form-input"
-                                    type="number"
-                                    step="any"
-                                    name="pickup_lon"
-                                    id="pickup_lon"
-                                    placeholder="-0.853"
-                                />
-                            </div>
-                        </div>
-                        <div class="form-row" style="margin-top:12px;">
-                            <div class="form-group" style="margin-bottom:0;">
-                                <label class="form-label"
-                                    >Destination Latitude</label
-                                >
-                                <input
-                                    class="form-input"
-                                    type="number"
-                                    step="any"
-                                    name="dest_lat"
-                                    placeholder="5.560"
-                                />
-                            </div>
-                            <div class="form-group" style="margin-bottom:0;">
-                                <label class="form-label"
-                                    >Destination Longitude</label
-                                >
-                                <input
-                                    class="form-input"
-                                    type="number"
-                                    step="any"
-                                    name="dest_lon"
-                                    placeholder="-0.205"
-                                />
+                            <div>
+                                <div class="form-label" style="margin-bottom:6px;">Destination</div>
+                                <div style="display:flex; gap:6px; margin-bottom:6px;">
+                                    <input
+                                        type="text"
+                                        id="search-dest"
+                                        class="form-input"
+                                        placeholder="Search destination (e.g. Accra, 37 Military)"
+                                        style="font-size:0.8rem;"
+                                        autocomplete="off"
+                                    />
+                                    <button type="button" id="search-dest-btn" class="btn btn-outline" style="white-space:nowrap; font-size:0.8rem;">Search</button>
+                                </div>
+                                <div id="search-dest-results" style="display:none; background:var(--surface); border:1px solid var(--border); border-radius:6px; margin-bottom:6px; max-height:160px; overflow-y:auto; font-size:0.8rem;"></div>
+                                <div id="map-dest" style="height:260px; border-radius:6px; border:1px solid var(--border);"></div>
+                                <div id="dest-coords" style="font-size:0.75rem; color:var(--charcoal-muted); margin-top:4px;">
+                                    Tap the map or search to pin destination
+                                </div>
                             </div>
                         </div>
                     </div>
@@ -1063,6 +1057,155 @@ Morphine 5mg IV"
     const saveBtn = document.getElementById("save-btn") as HTMLButtonElement;
     const counter = document.getElementById("step-counter")!;
 
+    let mapsReady = false;
+    let pickupMap: any = null;
+    let destMap: any = null;
+
+    async function initMaps() {
+        if (mapsReady) {
+            pickupMap?.invalidateSize();
+            destMap?.invalidateSize();
+            return;
+        }
+
+        // Load Leaflet CSS
+        const link = document.createElement('link');
+        link.rel = 'stylesheet';
+        link.href = 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.css';
+        document.head.appendChild(link);
+
+        // Load Leaflet JS
+        await new Promise<void>(resolve => {
+            const s = document.createElement('script');
+            s.src = 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.js';
+            s.onload = () => resolve();
+            document.head.appendChild(s);
+        });
+
+        const L = (window as any).L;
+        const GHANA_CENTER: [number, number] = [7.95, -1.02];
+        const ZOOM = 6;
+
+        // Pickup map
+        pickupMap = L.map('map-pickup').setView(GHANA_CENTER, ZOOM);
+        L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
+            attribution: '© OpenStreetMap',
+            maxZoom: 18,
+        }).addTo(pickupMap);
+
+        // Destination map
+        destMap = L.map('map-dest').setView(GHANA_CENTER, ZOOM);
+        L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
+            attribution: '© OpenStreetMap',
+            maxZoom: 18,
+        }).addTo(destMap);
+
+        // --- Search / geocoding ---
+        async function geocode(query: string): Promise<any[]> {
+            const url = `https://nominatim.openstreetmap.org/search?format=json&limit=5&countrycodes=gh&q=${encodeURIComponent(query)}`;
+            const res = await fetch(url, { headers: { 'Accept-Language': 'en' } });
+            return res.ok ? res.json() : [];
+        }
+
+        function buildResultsList(
+            results: any[],
+            container: HTMLElement,
+            onSelect: (lat: number, lng: number, label: string) => void,
+        ) {
+            container.innerHTML = '';
+            if (results.length === 0) {
+                container.innerHTML = '<div style="padding:8px 12px; color:var(--charcoal-muted);">No results found</div>';
+            } else {
+                results.forEach(r => {
+                    const item = document.createElement('div');
+                    item.textContent = r.display_name;
+                    item.style.cssText = 'padding:8px 12px; cursor:pointer; border-bottom:1px solid var(--border); line-height:1.4;';
+                    item.addEventListener('mouseenter', () => item.style.background = 'var(--green-soft)');
+                    item.addEventListener('mouseleave', () => item.style.background = '');
+                    item.addEventListener('click', () => {
+                        onSelect(parseFloat(r.lat), parseFloat(r.lon), r.display_name);
+                        container.style.display = 'none';
+                    });
+                    container.appendChild(item);
+                });
+            }
+            container.style.display = 'block';
+        }
+
+        function wireSearch(
+            inputId: string,
+            btnId: string,
+            resultsId: string,
+            map: any,
+            latId: string,
+            lonId: string,
+            coordsId: string,
+            markerRef: { value: any },
+        ) {
+            const input = document.getElementById(inputId) as HTMLInputElement;
+            const btn   = document.getElementById(btnId) as HTMLButtonElement;
+            const box   = document.getElementById(resultsId) as HTMLElement;
+
+            async function doSearch() {
+                const q = input.value.trim();
+                if (!q) return;
+                btn.textContent = '…';
+                btn.disabled = true;
+                const results = await geocode(q);
+                btn.textContent = 'Search';
+                btn.disabled = false;
+                buildResultsList(results, box, (lat, lng, label) => {
+                    (document.getElementById(latId) as HTMLInputElement).value = lat.toFixed(6);
+                    (document.getElementById(lonId) as HTMLInputElement).value = lng.toFixed(6);
+                    document.getElementById(coordsId)!.textContent = `${lat.toFixed(4)}, ${lng.toFixed(4)}`;
+                    map.setView([lat, lng], 13);
+                    if (markerRef.value) markerRef.value.setLatLng([lat, lng]);
+                    else markerRef.value = L.marker([lat, lng]).addTo(map);
+                    input.value = label.split(',')[0];
+                });
+            }
+
+            btn.addEventListener('click', doSearch);
+            input.addEventListener('keydown', (e: KeyboardEvent) => {
+                if (e.key === 'Enter') { e.preventDefault(); doSearch(); }
+            });
+            // Hide results when clicking outside
+            document.addEventListener('click', (e) => {
+                if (!box.contains(e.target as Node) && e.target !== input && e.target !== btn) {
+                    box.style.display = 'none';
+                }
+            });
+        }
+
+        const pickupMarkerRef: { value: any } = { value: null };
+        const destMarkerRef:   { value: any } = { value: null };
+
+        wireSearch('search-pickup', 'search-pickup-btn', 'search-pickup-results',
+            pickupMap, 'pickup_lat', 'pickup_lon', 'pickup-coords', pickupMarkerRef);
+        wireSearch('search-dest', 'search-dest-btn', 'search-dest-results',
+            destMap, 'dest_lat', 'dest_lon', 'dest-coords', destMarkerRef);
+
+        // Map click handlers (use markerRefs so search and click share the same marker)
+        pickupMap.on('click', (e: any) => {
+            const { lat, lng } = e.latlng;
+            (document.getElementById('pickup_lat') as HTMLInputElement).value = lat.toFixed(6);
+            (document.getElementById('pickup_lon') as HTMLInputElement).value = lng.toFixed(6);
+            document.getElementById('pickup-coords')!.textContent = `${lat.toFixed(4)}, ${lng.toFixed(4)}`;
+            if (pickupMarkerRef.value) pickupMarkerRef.value.setLatLng(e.latlng);
+            else pickupMarkerRef.value = L.marker(e.latlng).addTo(pickupMap);
+        });
+        destMap.on('click', (e: any) => {
+            const { lat, lng } = e.latlng;
+            (document.getElementById('dest_lat') as HTMLInputElement).value = lat.toFixed(6);
+            (document.getElementById('dest_lon') as HTMLInputElement).value = lng.toFixed(6);
+            document.getElementById('dest-coords')!.textContent = `${lat.toFixed(4)}, ${lng.toFixed(4)}`;
+            if (destMarkerRef.value) destMarkerRef.value.setLatLng(e.latlng);
+            else destMarkerRef.value = L.marker(e.latlng).addTo(destMap);
+        });
+
+        mapsReady = true;
+    }
+
     function goTo(index: number) {
         steps[current].classList.remove("active");
         dots[current].classList.remove("active");
@@ -1084,6 +1227,10 @@ Morphine 5mg IV"
         nextBtn.style.display = current === TOTAL_STEPS - 1 ? "none" : "";
         saveBtn.style.display = current === TOTAL_STEPS - 1 ? "" : "none";
         counter.textContent = `Step ${current + 1} of ${TOTAL_STEPS}`;
+
+        if (index === 6) {
+            requestAnimationFrame(() => initMaps());
+        }
 
         window.scrollTo({ top: 0, behavior: "smooth" });
     }
@@ -1134,17 +1281,20 @@ Morphine 5mg IV"
         btn.textContent = "Getting location…";
         navigator.geolocation.getCurrentPosition(
             (pos) => {
-                (
-                    document.getElementById("pickup_lat") as HTMLInputElement
-                ).value = pos.coords.latitude.toFixed(6);
-                (
-                    document.getElementById("pickup_lon") as HTMLInputElement
-                ).value = pos.coords.longitude.toFixed(6);
-                btn.textContent = "GPS filled";
+                const lat = pos.coords.latitude;
+                const lng = pos.coords.longitude;
+                (document.getElementById("pickup_lat") as HTMLInputElement).value = lat.toFixed(6);
+                (document.getElementById("pickup_lon") as HTMLInputElement).value = lng.toFixed(6);
+                document.getElementById("pickup-coords")!.textContent = `${lat.toFixed(4)}, ${lng.toFixed(4)}`;
+                if (pickupMap) {
+                    pickupMap.setView([lat, lng], 13);
+                    pickupMap.fire('click', { latlng: { lat, lng } });
+                }
+                btn.textContent = "📍 GPS filled";
             },
             () => {
                 btn.disabled = false;
-                btn.textContent = "GPS unavailable — enter manually";
+                btn.textContent = "GPS unavailable";
             },
         );
     });
@@ -1164,5 +1314,6 @@ Morphine 5mg IV"
         nextBtn.style.display = "none";
         saveBtn.style.display = "";
         counter.textContent = `Step ${TOTAL_STEPS} of ${TOTAL_STEPS}`;
+        requestAnimationFrame(() => initMaps());
     }
 </script>
