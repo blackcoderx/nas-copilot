@@ -6,7 +6,7 @@ import asyncpg
 
 # ── Cases ─────────────────────────────────────────────────────────────────────
 
-async def insert_case(conn: asyncpg.Connection, data: dict) -> dict:
+async def insert_case(conn: asyncpg.Connection, data: dict, created_by: str | None = None) -> dict:
     def js(v):
         return json.dumps(v) if v else None
 
@@ -22,7 +22,8 @@ async def insert_case(conn: asyncpg.Connection, data: dict) -> dict:
             complaint, allergies, current_medications, past_medical_hx,
             last_oral_intake, events_leading,
             vitals_set_1, vitals_set_2,
-            interventions, notes, crew_names
+            interventions, notes, crew_names,
+            created_by
         ) VALUES (
             $1,$2,$3,$4,$5,$6,
             $7,$8,$9,$10,$11,$12,
@@ -31,7 +32,8 @@ async def insert_case(conn: asyncpg.Connection, data: dict) -> dict:
             $18,$19,$20,
             $21,$22,$23,$24,$25,$26,
             $27,$28,
-            $29,$30,$31
+            $29,$30,$31,
+            $32
         )
         RETURNING *
         """,
@@ -49,26 +51,86 @@ async def insert_case(conn: asyncpg.Connection, data: dict) -> dict:
         data.get("past_medical_hx"), data.get("last_oral_intake"), data.get("events_leading"),
         js(data.get("vitals_set_1")), js(data.get("vitals_set_2")),
         data.get("interventions"), data.get("notes"), data.get("crew_names"),
+        created_by,
     )
     return dict(row)
 
 
-async def get_case(conn: asyncpg.Connection, case_id: UUID) -> dict | None:
-    row = await conn.fetchrow("SELECT * FROM cases WHERE id = $1", case_id)
+async def get_case(
+    conn: asyncpg.Connection,
+    case_id: UUID,
+    user_id: str | None = None,
+    role: str = "emt",
+    hospital_id: str | None = None,
+) -> dict | None:
+    if role == "superadmin":
+        row = await conn.fetchrow("SELECT * FROM cases WHERE id = $1", case_id)
+    elif role == "admin":
+        row = await conn.fetchrow(
+            """
+            SELECT c.* FROM cases c
+            WHERE c.id = $1
+              AND (
+                c.created_by IN (SELECT id FROM users WHERE hospital_id = $2)
+                OR c.created_by IS NULL
+              )
+            """,
+            case_id, hospital_id,
+        )
+    else:
+        row = await conn.fetchrow(
+            "SELECT * FROM cases WHERE id = $1 AND created_by = $2",
+            case_id, user_id,
+        )
     return dict(row) if row else None
 
 
-async def list_cases(conn: asyncpg.Connection) -> list[dict]:
-    rows = await conn.fetch(
-        "SELECT * FROM cases ORDER BY created_at DESC LIMIT 100"
-    )
+async def list_cases(
+    conn: asyncpg.Connection,
+    user_id: str | None = None,
+    role: str = "emt",
+    hospital_id: str | None = None,
+) -> list[dict]:
+    if role == "superadmin":
+        rows = await conn.fetch("SELECT * FROM cases ORDER BY created_at DESC LIMIT 200")
+    elif role == "admin":
+        rows = await conn.fetch(
+            """
+            SELECT c.* FROM cases c
+            WHERE c.created_by IN (SELECT id FROM users WHERE hospital_id = $1)
+               OR c.created_by IS NULL
+            ORDER BY c.created_at DESC LIMIT 200
+            """,
+            hospital_id,
+        )
+    else:
+        rows = await conn.fetch(
+            "SELECT * FROM cases WHERE created_by = $1 ORDER BY created_at DESC LIMIT 100",
+            user_id,
+        )
     return [dict(r) for r in rows]
 
 
-async def finalize_case(conn: asyncpg.Connection, case_id: UUID) -> dict | None:
+async def finalize_case(
+    conn: asyncpg.Connection,
+    case_id: UUID,
+    user_id: str | None = None,
+    role: str = "emt",
+    hospital_id: str | None = None,
+) -> dict | None:
+    if role == "superadmin":
+        where = "id = $1"
+        params = [case_id]
+    elif role == "admin":
+        where = "id = $1 AND created_by IN (SELECT id FROM users WHERE hospital_id = $2)"
+        params = [case_id, hospital_id]
+    else:
+        where = "id = $1 AND created_by = $2"
+        params = [case_id, user_id]
+
     row = await conn.fetchrow(
-        "UPDATE cases SET status = 'FINAL', updated_at = NOW() WHERE id = $1 RETURNING *",
-        case_id,
+        f"UPDATE cases SET status = 'FINAL', updated_at = NOW() WHERE {where} RETURNING *",
+        *params,
     )
     return dict(row) if row else None
 

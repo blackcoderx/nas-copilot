@@ -1,0 +1,85 @@
+---
+import Base from '../../layouts/Base.astro';
+
+const API   = import.meta.env.PUBLIC_API_URL ?? 'http://localhost:8000';
+const token = Astro.cookies.get('nas_token')?.value;
+
+let hospitals: any[] = [];
+let fetchError = '';
+
+try {
+  const res = await fetch(`${API}/auth/hospitals`, { headers: { Authorization: `Bearer ${token}` } });
+  if (res.status === 401) return Astro.redirect('/login');
+  if (res.ok) hospitals = await res.json();
+  else fetchError = 'Could not load hospitals';
+} catch {
+  fetchError = 'Could not reach backend';
+}
+
+function fmtDate(iso: string) {
+  return new Date(iso).toLocaleString('en-GB', {
+    day: '2-digit', month: 'short', year: 'numeric',
+  });
+}
+---
+
+<Base title="Super Admin">
+  <div class="page">
+    <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:28px; flex-wrap:wrap; gap:12px;">
+      <div>
+        <h1>Super Admin</h1>
+        <p style="font-size:0.85rem; color:var(--charcoal-muted); margin-top:4px;">
+          Manage hospital accounts across the NAS network.
+        </p>
+      </div>
+      <a href="/superadmin/hospitals/new" class="btn btn-primary">+ Add Hospital</a>
+    </div>
+
+    {fetchError && (
+      <div style="background:var(--red-bg); color:var(--red-text); border:1px solid #fecaca; border-radius:var(--radius-card); padding:14px 18px; margin-bottom:20px; font-size:0.85rem;">
+        {fetchError}
+      </div>
+    )}
+
+    <div class="card">
+      <div class="card-header">
+        <h2>Registered Hospitals</h2>
+        <span style="font-size:0.8rem; color:var(--charcoal-muted);">{hospitals.length} hospital{hospitals.length !== 1 ? 's' : ''}</span>
+      </div>
+      <div class="card-body" style="padding:0;">
+        {hospitals.length === 0 ? (
+          <div class="empty">
+            No hospitals yet. <a href="/superadmin/hospitals/new" style="color:var(--green); text-decoration:underline;">Add your first hospital.</a>
+          </div>
+        ) : (
+          <div>
+            {hospitals.map((h: any) => (
+              <div style="padding:16px 20px; border-bottom:1px solid var(--border);">
+                <div style="display:flex; align-items:center; justify-content:space-between; gap:12px;">
+                  <div>
+                    <div style="font-weight:600; font-size:0.95rem;">{h.name}</div>
+                    <div style="font-size:0.78rem; color:var(--charcoal-muted); margin-top:2px;">
+                      Added {fmtDate(h.created_at)}
+                    </div>
+                  </div>
+                  <span class="badge badge-final">Active</span>
+                </div>
+                {h.admins.length > 0 ? (
+                  <div style="margin-top:10px; display:flex; flex-wrap:wrap; gap:6px;">
+                    {h.admins.map((a: any) => (
+                      <span style="background:var(--bg); border:1px solid var(--border); border-radius:20px; padding:2px 10px; font-size:0.75rem; color:var(--charcoal-muted);">
+                        {a.full_name ?? a.username} <span style="opacity:0.6;">({a.username})</span>
+                      </span>
+                    ))}
+                  </div>
+                ) : (
+                  <div style="margin-top:8px; font-size:0.78rem; color:var(--charcoal-muted);">No admin accounts yet.</div>
+                )}
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+    </div>
+  </div>
+</Base>

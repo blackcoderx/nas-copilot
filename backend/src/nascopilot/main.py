@@ -4,14 +4,32 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from nascopilot.config import settings
-from nascopilot.database import init_pool, close_pool
+from nascopilot.database import init_pool, close_pool, get_conn
 from nascopilot.routers.auth import router as auth_router
 from nascopilot.routers.cases import router as cases_router
+from nascopilot.services.auth import hash_password
+
+
+async def _seed_superadmin() -> None:
+    """Create superadmin account on first boot if env vars are set and no superadmin exists."""
+    if not settings.superadmin_username or not settings.superadmin_password:
+        return
+    async with get_conn() as conn:
+        exists = await conn.fetchval("SELECT 1 FROM users WHERE role = 'superadmin' LIMIT 1")
+        if exists:
+            return
+        hashed = hash_password(settings.superadmin_password)
+        await conn.execute(
+            "INSERT INTO users (username, hashed_pw, role) VALUES ($1, $2, 'superadmin')",
+            settings.superadmin_username, hashed,
+        )
+        print(f"[startup] Superadmin '{settings.superadmin_username}' created.")
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     await init_pool()
+    await _seed_superadmin()
     yield
     await close_pool()
 

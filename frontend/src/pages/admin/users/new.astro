@@ -1,0 +1,75 @@
+---
+import Base from '../../../layouts/Base.astro';
+
+const API   = import.meta.env.PUBLIC_API_URL ?? 'http://localhost:8000';
+const token = Astro.cookies.get('nas_token')?.value;
+
+let error = '';
+
+if (Astro.request.method === 'POST') {
+  try {
+    const form     = await Astro.request.formData();
+    const username  = form.get('username') as string;
+    const password  = form.get('password') as string;
+    const full_name = (form.get('full_name') as string) || null;
+
+    const res = await fetch(`${API}/auth/register/emt`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+      body: JSON.stringify({ username, password, full_name }),
+    });
+
+    if (res.ok) {
+      return Astro.redirect('/admin');
+    } else {
+      const err = await res.json().catch(() => ({}));
+      error = err.detail ?? `Server error ${res.status}`;
+    }
+  } catch (e: any) {
+    error = e.message ?? 'Unexpected error';
+  }
+}
+---
+
+<Base title="Add Staff Member">
+  <div class="page" style="max-width:520px;">
+    <div style="margin-bottom:24px;">
+      <a href="/admin" style="font-size:0.8rem; color:var(--charcoal-muted); display:inline-flex; align-items:center; gap:4px; margin-bottom:12px;">
+        ← Admin Panel
+      </a>
+      <h1>Add Staff Member</h1>
+      <p style="font-size:0.85rem; color:var(--charcoal-muted); margin-top:4px;">
+        Create a new EMT account for your hospital.
+      </p>
+    </div>
+
+    {error && (
+      <div style="background:var(--red-bg); color:var(--red-text); border:1px solid #fecaca; border-radius:var(--radius-card); padding:14px 18px; margin-bottom:20px; font-size:0.85rem;">
+        {error}
+      </div>
+    )}
+
+    <div class="card">
+      <div class="card-body">
+        <form method="POST">
+          <div class="form-group">
+            <label class="form-label">Full Name</label>
+            <input class="form-input" type="text" name="full_name" placeholder="e.g. Ama Owusu" />
+          </div>
+          <div class="form-group">
+            <label class="form-label">Username *</label>
+            <input class="form-input" type="text" name="username" placeholder="e.g. aowusu" required autocomplete="off" />
+          </div>
+          <div class="form-group" style="margin-bottom:24px;">
+            <label class="form-label">Password *</label>
+            <input class="form-input" type="password" name="password" placeholder="Minimum 8 characters" required minlength="8" autocomplete="new-password" />
+          </div>
+          <div style="display:flex; gap:12px; justify-content:flex-end;">
+            <a href="/admin" class="btn btn-outline">Cancel</a>
+            <button type="submit" class="btn btn-primary">Create Account →</button>
+          </div>
+        </form>
+      </div>
+    </div>
+  </div>
+</Base>

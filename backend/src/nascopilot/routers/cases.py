@@ -6,33 +6,43 @@ from fastapi.responses import JSONResponse
 
 from nascopilot.database import get_conn
 from nascopilot.db import queries
-from nascopilot.dependencies import get_current_user_id
+from nascopilot.dependencies import get_current_user
 from nascopilot.models.case import CaseCreate, CaseOut, CaseListItem
 from nascopilot.models.generation import GenerationOut
 from nascopilot.models.flag import QualityFlag
 from nascopilot.services.generate import run_generate
 
-router = APIRouter(prefix="/cases", tags=["cases"], dependencies=[Depends(get_current_user_id)])
+router = APIRouter(prefix="/cases", tags=["cases"], dependencies=[Depends(get_current_user)])
 
 
 @router.post("", response_model=CaseOut, status_code=201)
-async def create_case(body: CaseCreate):
+async def create_case(body: CaseCreate, user: dict = Depends(get_current_user)):
     async with get_conn() as conn:
-        row = await queries.insert_case(conn, body.model_dump())
+        row = await queries.insert_case(conn, body.model_dump(), created_by=user["user_id"])
     return CaseOut(**row)
 
 
 @router.get("", response_model=list[CaseListItem])
-async def list_cases():
+async def list_cases(user: dict = Depends(get_current_user)):
     async with get_conn() as conn:
-        rows = await queries.list_cases(conn)
+        rows = await queries.list_cases(
+            conn,
+            user_id=user["user_id"],
+            role=user["role"],
+            hospital_id=user["hospital_id"],
+        )
     return [CaseListItem(**r) for r in rows]
 
 
 @router.get("/{case_id}")
-async def get_case(case_id: UUID):
+async def get_case(case_id: UUID, user: dict = Depends(get_current_user)):
     async with get_conn() as conn:
-        case_row = await queries.get_case(conn, case_id)
+        case_row = await queries.get_case(
+            conn, case_id,
+            user_id=user["user_id"],
+            role=user["role"],
+            hospital_id=user["hospital_id"],
+        )
         if not case_row:
             raise HTTPException(status_code=404, detail="Case not found")
         gen_row = await queries.get_latest_generation(conn, case_id)
@@ -42,15 +52,26 @@ async def get_case(case_id: UUID):
             flags = [QualityFlag(**f) for f in flag_rows]
 
     case_out = CaseOut(**case_row)
-    gen_out = None
-    if gen_row:
-        gen_out = GenerationOut(**gen_row, flags=flags)
+    gen_out = GenerationOut(**gen_row, flags=flags) if gen_row else None
 
-    return {"case": case_out.model_dump(mode="json"), "latest_generation": gen_out.model_dump(mode="json") if gen_out else None}
+    return {
+        "case": case_out.model_dump(mode="json"),
+        "latest_generation": gen_out.model_dump(mode="json") if gen_out else None,
+    }
 
 
 @router.post("/{case_id}/generate", response_model=GenerationOut)
-async def generate(case_id: UUID):
+async def generate(case_id: UUID, user: dict = Depends(get_current_user)):
+    # Verify access first
+    async with get_conn() as conn:
+        case_row = await queries.get_case(
+            conn, case_id,
+            user_id=user["user_id"],
+            role=user["role"],
+            hospital_id=user["hospital_id"],
+        )
+    if not case_row:
+        raise HTTPException(status_code=404, detail="Case not found")
     try:
         async with get_conn() as conn:
             result = await run_generate(conn, case_id)
@@ -62,18 +83,28 @@ async def generate(case_id: UUID):
 
 
 @router.patch("/{case_id}/finalize", response_model=CaseOut)
-async def finalize(case_id: UUID):
+async def finalize(case_id: UUID, user: dict = Depends(get_current_user)):
     async with get_conn() as conn:
-        row = await queries.finalize_case(conn, case_id)
+        row = await queries.finalize_case(
+            conn, case_id,
+            user_id=user["user_id"],
+            role=user["role"],
+            hospital_id=user["hospital_id"],
+        )
     if not row:
         raise HTTPException(status_code=404, detail="Case not found")
     return CaseOut(**row)
 
 
 @router.get("/{case_id}/export")
-async def export_case(case_id: UUID):
+async def export_case(case_id: UUID, user: dict = Depends(get_current_user)):
     async with get_conn() as conn:
-        case_row = await queries.get_case(conn, case_id)
+        case_row = await queries.get_case(
+            conn, case_id,
+            user_id=user["user_id"],
+            role=user["role"],
+            hospital_id=user["hospital_id"],
+        )
         if not case_row:
             raise HTTPException(status_code=404, detail="Case not found")
         gen_rows = await queries.get_all_generations(conn, case_id)

@@ -15,13 +15,13 @@ if (Astro.request.method === 'POST') {
     });
 
     if (res.ok) {
-      const { access_token } = await res.json();
-      Astro.cookies.set('nas_token', access_token, {
-        path: '/',
-        maxAge: 60 * 60 * 24,
-        sameSite: 'lax',
-        secure: import.meta.env.PROD,
-      });
+      const { access_token, role } = await res.json();
+      const cookieOpts = { path: '/', maxAge: 60 * 60 * 24, sameSite: 'lax' as const, secure: import.meta.env.PROD };
+      Astro.cookies.set('nas_token', access_token, cookieOpts);
+      Astro.cookies.set('nas_role', role, cookieOpts);
+
+      if (role === 'superadmin') return Astro.redirect('/superadmin');
+      if (role === 'admin')      return Astro.redirect('/admin');
       return Astro.redirect('/dashboard');
     } else {
       error = 'Invalid username or password';
@@ -76,6 +76,15 @@ if (Astro.request.method === 'POST') {
     .login-header h1 { font-size: 1.3rem; font-weight: 700; margin-bottom: 6px; }
     .login-header p { font-size: 0.85rem; color: var(--charcoal-muted); }
 
+    .role-badge {
+      display: inline-block; margin-top: 10px;
+      background: var(--green-soft); color: var(--green-dark);
+      border: 1px solid #c3ddd4; border-radius: 20px;
+      padding: 2px 12px; font-size: 0.75rem; font-weight: 600;
+      transition: opacity 200ms;
+    }
+    .role-badge.hidden { opacity: 0; pointer-events: none; }
+
     .form-group { display: flex; flex-direction: column; gap: 5px; margin-bottom: 16px; }
     .form-label { font-size: 0.8rem; font-weight: 500; color: var(--charcoal-muted); }
     .form-input {
@@ -105,6 +114,12 @@ if (Astro.request.method === 'POST') {
       text-align: center; margin-top: 20px;
       font-size: 0.8rem; color: var(--charcoal-muted);
     }
+    .admin-toggle {
+      background: none; border: none; color: var(--charcoal-muted);
+      font-size: 0.8rem; cursor: pointer; font-family: inherit;
+      text-decoration: underline; padding: 0;
+    }
+    .admin-toggle:hover { color: var(--charcoal); }
 
     @keyframes fadeUp { from { opacity:0; transform:translateY(10px); } to { opacity:1; transform:none; } }
     .login-card { animation: fadeUp 300ms ease both; }
@@ -119,8 +134,9 @@ if (Astro.request.method === 'POST') {
   <div class="login-wrap">
     <div class="login-card">
       <div class="login-header">
-        <h1>Sign In</h1>
+        <h1 id="login-title">Staff Sign In</h1>
         <p>Ghana National Ambulance Service</p>
+        <span class="role-badge hidden" id="admin-badge">Admin Login</span>
       </div>
 
       {error && <div class="error">{error}</div>}
@@ -138,9 +154,25 @@ if (Astro.request.method === 'POST') {
       </form>
 
       <div class="login-footer">
-        Don't have an account? Contact your administrator.
+        Don't have an account? Contact your administrator.<br />
+        <br />
+        <button class="admin-toggle" id="admin-toggle" type="button">Admin? Sign in here</button>
       </div>
     </div>
   </div>
+
+  <script>
+    const toggle = document.getElementById('admin-toggle')!;
+    const title  = document.getElementById('login-title')!;
+    const badge  = document.getElementById('admin-badge')!;
+    let isAdmin  = false;
+
+    toggle.addEventListener('click', () => {
+      isAdmin = !isAdmin;
+      title.textContent  = isAdmin ? 'Admin Sign In' : 'Staff Sign In';
+      badge.classList.toggle('hidden', !isAdmin);
+      toggle.textContent = isAdmin ? 'Back to Staff login' : 'Admin? Sign in here';
+    });
+  </script>
 </body>
 </html>

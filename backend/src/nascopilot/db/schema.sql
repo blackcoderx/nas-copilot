@@ -104,3 +104,19 @@ CREATE TABLE IF NOT EXISTS quality_flags (
   issue         TEXT NOT NULL,
   action        TEXT NOT NULL
 );
+
+-- ── Multi-tenant auth ─────────────────────────────────────────────────────────
+
+CREATE TABLE IF NOT EXISTS hospitals (
+  id         UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  name       TEXT UNIQUE NOT NULL,
+  created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- Idempotent migrations for users
+ALTER TABLE users ADD COLUMN IF NOT EXISTS role        TEXT NOT NULL DEFAULT 'emt';
+ALTER TABLE users ADD COLUMN IF NOT EXISTS hospital_id UUID REFERENCES hospitals(id) ON DELETE SET NULL;
+ALTER TABLE users ADD COLUMN IF NOT EXISTS full_name   TEXT;
+
+-- Idempotent migration for cases ownership
+ALTER TABLE cases ADD COLUMN IF NOT EXISTS created_by UUID REFERENCES users(id) ON DELETE SET NULL;

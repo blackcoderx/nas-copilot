@@ -3,6 +3,7 @@ interface Props {
   title?: string;
 }
 const { title = 'NAS Copilot GH' } = Astro.props;
+const role = Astro.cookies.get('nas_role')?.value ?? 'emt';
 ---
 <!doctype html>
 <html lang="en">
@@ -203,11 +204,23 @@ const { title = 'NAS Copilot GH' } = Astro.props;
 </head>
 <body>
   <nav class="nav">
-    <a href="/dashboard" class="nav-brand">NAS<span> Copilot</span></a>
+    <a href={role === 'superadmin' ? '/superadmin' : role === 'admin' ? '/admin' : '/dashboard'} class="nav-brand">NAS<span> Copilot</span></a>
     <div class="nav-links">
-      <a href="/dashboard">Dashboard</a>
-      <a href="/cases">Cases</a>
-      <a href="/cases/new">New Case</a>
+      {role === 'superadmin' && (
+        <a href="/superadmin">Super Admin</a>
+      )}
+      {role === 'admin' && (
+        <>
+          <a href="/admin">Admin Panel</a>
+          <a href="/admin/users/new">Add Staff</a>
+        </>
+      )}
+      {role === 'emt' && (
+        <>
+          <a href="/dashboard">Dashboard</a>
+          <a href="/cases/new">New Case</a>
+        </>
+      )}
       <a href="/logout" style="color:rgba(255,255,255,0.4);">Sign Out</a>
     </div>
   </nav>
