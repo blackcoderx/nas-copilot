@@ -288,3 +288,192 @@ async def get_all_facility_statuses(conn: asyncpg.Connection) -> list[dict]:
         """,
     )
     return [dict(r) for r in rows]
+
+
+# ── Analytics ──────────────────────────────────────────────────────────────────
+
+def _hospital_case_filter(role: str) -> str:
+    """Returns a WHERE clause fragment scoping cases to a hospital for admin role."""
+    if role == "superadmin":
+        return ""
+    return "WHERE c.created_by IN (SELECT id FROM users WHERE hospital_id = $1)"
+
+
+async def get_cases_by_day(
+    conn: asyncpg.Connection, role: str, hospital_id: str | None, days: int = 30
+) -> list[dict]:
+    if role == "superadmin":
+        rows = await conn.fetch(
+            """
+            SELECT DATE_TRUNC('day', created_at)::date AS date, COUNT(*) AS count
+            FROM cases
+            WHERE created_at >= NOW() - ($1 || ' days')::INTERVAL
+            GROUP BY 1 ORDER BY 1
+            """,
+            str(days),
+        )
+    else:
+        rows = await conn.fetch(
+            """
+            SELECT DATE_TRUNC('day', created_at)::date AS date, COUNT(*) AS count
+            FROM cases
+            WHERE created_at >= NOW() - ($1 || ' days')::INTERVAL
+              AND created_by IN (SELECT id FROM users WHERE hospital_id = $2)
+            GROUP BY 1 ORDER BY 1
+            """,
+            str(days), hospital_id,
+        )
+    return [{"date": str(r["date"]), "count": r["count"]} for r in rows]
+
+
+async def get_triage_distribution(
+    conn: asyncpg.Connection, role: str, hospital_id: str | None
+) -> list[dict]:
+    if role == "superadmin":
+        rows = await conn.fetch(
+            """
+            SELECT g.triage_json->>'color' AS color, COUNT(*) AS count
+            FROM generations g
+            WHERE g.triage_json IS NOT NULL
+            GROUP BY 1 ORDER BY 2 DESC
+            """,
+        )
+    else:
+        rows = await conn.fetch(
+            """
+            SELECT g.triage_json->>'color' AS color, COUNT(*) AS count
+            FROM generations g
+            JOIN cases c ON c.id = g.case_id
+            WHERE g.triage_json IS NOT NULL
+              AND c.created_by IN (SELECT id FROM users WHERE hospital_id = $1)
+            GROUP BY 1 ORDER BY 2 DESC
+            """,
+            hospital_id,
+        )
+    return [{"color": r["color"], "count": r["count"]} for r in rows]
+
+
+async def get_top_complaints(
+    conn: asyncpg.Connection, role: str, hospital_id: str | None, limit: int = 5
+) -> list[dict]:
+    if role == "superadmin":
+        rows = await conn.fetch(
+            "SELECT complaint, COUNT(*) AS count FROM cases GROUP BY complaint ORDER BY 2 DESC LIMIT $1",
+            limit,
+        )
+    else:
+        rows = await conn.fetch(
+            """
+            SELECT complaint, COUNT(*) AS count FROM cases
+            WHERE created_by IN (SELECT id FROM users WHERE hospital_id = $1)
+            GROUP BY complaint ORDER BY 2 DESC LIMIT $2
+            """,
+            hospital_id, limit,
+        )
+    return [{"complaint": r["complaint"], "count": r["count"]} for r in rows]
+
+
+async def get_top_qa_flags(
+    conn: asyncpg.Connection, role: str, hospital_id: str | None, limit: int = 5
+) -> list[dict]:
+    if role == "superadmin":
+        rows = await conn.fetch(
+            "SELECT issue, COUNT(*) AS count FROM quality_flags GROUP BY issue ORDER BY 2 DESC LIMIT $1",
+            limit,
+        )
+    else:
+        rows = await conn.fetch(
+            """
+            SELECT qf.issue, COUNT(*) AS count
+            FROM quality_flags qf
+            JOIN generations g ON g.id = qf.generation_id
+            JOIN cases c ON c.id = g.case_id
+            WHERE c.created_by IN (SELECT id FROM users WHERE hospital_id = $1)
+            GROUP BY qf.issue ORDER BY 2 DESC LIMIT $2
+            """,
+            hospital_id, limit,
+        )
+    return [{"issue": r["issue"], "count": r["count"]} for r in rows]
+
+
+async def get_pcr_completion(
+    conn: asyncpg.Connection, role: str, hospital_id: str | None
+) -> dict:
+    if role == "superadmin":
+        total = await conn.fetchval("SELECT COUNT(*) FROM cases")
+        with_pcr = await conn.fetchval(
+            "SELECT COUNT(DISTINCT case_id) FROM generations"
+        )
+    else:
+        total = await conn.fetchval(
+            "SELECT COUNT(*) FROM cases WHERE created_by IN (SELECT id FROM users WHERE hospital_id = $1)",
+            hospital_id,
+        )
+        with_pcr = await conn.fetchval(
+            """
+            SELECT COUNT(DISTINCT g.case_id) FROM generations g
+            JOIN cases c ON c.id = g.case_id
+            WHERE c.created_by IN (SELECT id FROM users WHERE hospital_id = $1)
+            """,
+            hospital_id,
+        )
+    return {"total_cases": total, "with_pcr": with_pcr}
+
+
+async def get_case_locations(
+    conn: asyncpg.Connection, role: str, hospital_id: str | None
+) -> list[dict]:
+    if role == "superadmin":
+        rows = await conn.fetch(
+            "SELECT pickup_lat, pickup_lon FROM cases WHERE pickup_lat IS NOT NULL AND pickup_lon IS NOT NULL"
+        )
+    else:
+        rows = await conn.fetch(
+            """
+            SELECT pickup_lat, pickup_lon FROM cases
+            WHERE pickup_lat IS NOT NULL AND pickup_lon IS NOT NULL
+              AND created_by IN (SELECT id FROM users WHERE hospital_id = $1)
+            """,
+            hospital_id,
+        )
+    return [{"lat": float(r["pickup_lat"]), "lon": float(r["pickup_lon"])} for r in rows]
+
+
+async def get_transport_mode_split(
+    conn: asyncpg.Connection, role: str, hospital_id: str | None
+) -> list[dict]:
+    if role == "superadmin":
+        rows = await conn.fetch(
+            "SELECT transport_mode, COUNT(*) AS count FROM cases GROUP BY transport_mode ORDER BY 2 DESC"
+        )
+    else:
+        rows = await conn.fetch(
+            """
+            SELECT transport_mode, COUNT(*) AS count FROM cases
+            WHERE created_by IN (SELECT id FROM users WHERE hospital_id = $1)
+            GROUP BY transport_mode ORDER BY 2 DESC
+            """,
+            hospital_id,
+        )
+    return [{"mode": r["transport_mode"], "count": r["count"]} for r in rows]
+
+
+async def get_outcomes_summary(
+    conn: asyncpg.Connection, role: str, hospital_id: str | None
+) -> list[dict]:
+    if role == "superadmin":
+        rows = await conn.fetch(
+            "SELECT patient_status, COUNT(*) AS count FROM outcomes GROUP BY patient_status ORDER BY 2 DESC"
+        )
+    else:
+        rows = await conn.fetch(
+            """
+            SELECT o.patient_status, COUNT(*) AS count
+            FROM outcomes o
+            JOIN cases c ON c.id = o.case_id
+            WHERE c.created_by IN (SELECT id FROM users WHERE hospital_id = $1)
+            GROUP BY o.patient_status ORDER BY 2 DESC
+            """,
+            hospital_id,
+        )
+    return [{"status": r["patient_status"], "count": r["count"]} for r in rows]

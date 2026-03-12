@@ -9,6 +9,7 @@ from nascopilot.routers.auth import router as auth_router
 from nascopilot.routers.cases import router as cases_router
 from nascopilot.routers.outcomes import router as outcomes_router
 from nascopilot.routers.facilities import router as facilities_router
+from nascopilot.routers.analytics import router as analytics_router
 from nascopilot.services.auth import hash_password
 
 
@@ -50,6 +51,7 @@ app.include_router(auth_router)
 app.include_router(cases_router)
 app.include_router(outcomes_router)
 app.include_router(facilities_router)
+app.include_router(analytics_router)
 
 
 @app.get("/health")
