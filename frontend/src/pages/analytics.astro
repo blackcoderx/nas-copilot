@@ -1,0 +1,326 @@
+---
+import Base from '../layouts/Base.astro';
+
+const API   = import.meta.env.PUBLIC_API_URL ?? 'http://localhost:8000';
+const token = Astro.cookies.get('nas_token')?.value;
+
+if (!token) return Astro.redirect('/login');
+
+let data: any = null;
+let fetchError = '';
+
+try {
+  const res = await fetch(`${API}/analytics/summary`, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  if (res.status === 401) return Astro.redirect('/login');
+  if (res.status === 403) return Astro.redirect('/dashboard');
+  if (res.ok) data = await res.json();
+  else fetchError = 'Could not load analytics data';
+} catch {
+  fetchError = 'Could not reach backend';
+}
+
+const pcr = data?.pcr_completion ?? { total_cases: 0, with_pcr: 0 };
+const pcrPct = pcr.total_cases > 0 ? Math.round((pcr.with_pcr / pcr.total_cases) * 100) : 0;
+const totalOutcomes = (data?.outcomes_summary ?? []).reduce((s: number, r: any) => s + r.count, 0);
+---
+
+<Base title="Analytics">
+  <!-- Chart.js + Leaflet via CDN -->
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.3/dist/chart.umd.min.js" is:inline></script>
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" is:inline></script>
+
+  <div class="page-wide">
+    <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:28px; flex-wrap:wrap; gap:12px;">
+      <div>
+        <h1>Analytics Dashboard</h1>
+        <p style="font-size:0.85rem; color:var(--charcoal-muted); margin-top:4px;">
+          Aggregate EMS performance data for reporting and planning.
+        </p>
+      </div>
+      <button id="export-csv-btn" class="btn btn-outline">Export CSV</button>
+    </div>
+
+    {fetchError && (
+      <div style="background:var(--red-bg); color:var(--red-text); border:1px solid #fecaca; border-radius:var(--radius-card); padding:14px 18px; margin-bottom:20px; font-size:0.85rem;">
+        {fetchError}
+      </div>
+    )}
+
+    {data && (
+      <>
+        <!-- KPI row -->
+        <div style="display:grid; grid-template-columns:repeat(3,1fr); gap:16px; margin-bottom:24px;">
+          <div class="card card-body" style="text-align:center;">
+            <div style="font-size:2rem; font-weight:600; color:var(--green);">{pcr.total_cases}</div>
+            <div style="font-size:0.8rem; color:var(--charcoal-muted); margin-top:4px;">Total Cases</div>
+          </div>
+          <div class="card card-body" style="text-align:center;">
+            <div style="font-size:2rem; font-weight:600; color:var(--green);">{pcrPct}%</div>
+            <div style="font-size:0.8rem; color:var(--charcoal-muted); margin-top:4px;">PCR Completion Rate</div>
+          </div>
+          <div class="card card-body" style="text-align:center;">
+            <div style="font-size:2rem; font-weight:600; color:var(--green);">{totalOutcomes}</div>
+            <div style="font-size:0.8rem; color:var(--charcoal-muted); margin-top:4px;">Outcomes Recorded</div>
+          </div>
+        </div>
+
+        <!-- Charts row 1: Cases by day + Triage distribution -->
+        <div style="display:grid; grid-template-columns:2fr 1fr; gap:16px; margin-bottom:16px;">
+          <div class="card">
+            <div class="card-header"><h2>Cases Per Day (Last 30 Days)</h2></div>
+            <div class="card-body"><canvas id="chart-cases-day" height="160"></canvas></div>
+          </div>
+          <div class="card">
+            <div class="card-header"><h2>Triage Severity</h2></div>
+            <div class="card-body"><canvas id="chart-triage" height="160"></canvas></div>
+          </div>
+        </div>
+
+        <!-- Charts row 2: Top complaints + Transport split -->
+        <div style="display:grid; grid-template-columns:2fr 1fr; gap:16px; margin-bottom:16px;">
+          <div class="card">
+            <div class="card-header"><h2>Top 5 Chief Complaints</h2></div>
+            <div class="card-body"><canvas id="chart-complaints" height="160"></canvas></div>
+          </div>
+          <div class="card">
+            <div class="card-header"><h2>Transport Mode</h2></div>
+            <div class="card-body"><canvas id="chart-transport" height="160"></canvas></div>
+          </div>
+        </div>
+
+        <!-- Charts row 3: Outcomes + QA flags -->
+        <div style="display:grid; grid-template-columns:1fr 1fr; gap:16px; margin-bottom:16px;">
+          <div class="card">
+            <div class="card-header"><h2>Outcomes Summary</h2></div>
+            <div class="card-body"><canvas id="chart-outcomes" height="160"></canvas></div>
+          </div>
+          <div class="card">
+            <div class="card-header"><h2>Top QA Flags</h2></div>
+            <div class="card-body" style="padding:0;">
+              {data.top_qa_flags.length === 0 ? (
+                <div class="empty" style="padding:32px;">No QA flags recorded yet.</div>
+              ) : (
+                <table style="width:100%; border-collapse:collapse; font-size:0.85rem;">
+                  <thead>
+                    <tr style="border-bottom:1px solid var(--border);">
+                      <th style="padding:10px 16px; text-align:left; font-weight:500; color:var(--charcoal-muted);">#</th>
+                      <th style="padding:10px 16px; text-align:left; font-weight:500; color:var(--charcoal-muted);">Issue</th>
+                      <th style="padding:10px 16px; text-align:right; font-weight:500; color:var(--charcoal-muted);">Count</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {data.top_qa_flags.map((f: any, i: number) => (
+                      <tr style="border-bottom:1px solid var(--border);">
+                        <td style="padding:10px 16px; color:var(--charcoal-muted);">{i + 1}</td>
+                        <td style="padding:10px 16px;">{f.issue}</td>
+                        <td style="padding:10px 16px; text-align:right; font-weight:500;">{f.count}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              )}
+            </div>
+          </div>
+        </div>
+
+        <!-- Incident heatmap -->
+        <div class="card" style="margin-bottom:16px;">
+          <div class="card-header">
+            <h2>Incident Location Map</h2>
+            <span style="font-size:0.8rem; color:var(--charcoal-muted);">{data.locations.length} case{data.locations.length !== 1 ? 's' : ''} with coordinates</span>
+          </div>
+          <div class="card-body" style="padding:0;">
+            {data.locations.length === 0 ? (
+              <div class="empty">No cases with GPS coordinates recorded yet.</div>
+            ) : (
+              <div id="incident-map" style="height:420px; border-radius:0 0 var(--radius-card) var(--radius-card);"></div>
+            )}
+          </div>
+        </div>
+      </>
+    )}
+  </div>
+
+  <script define:vars={{ analyticsData: data }}>
+    if (!analyticsData) {
+      // nothing to render
+    } else {
+      const TRIAGE_COLORS = {
+        red:    '#EF4444',
+        orange: '#F97316',
+        yellow: '#EAB308',
+        green:  '#22C55E',
+      };
+
+      // ── Cases per day ──────────────────────────────────────────────────────
+      const dayLabels = analyticsData.cases_by_day.map(r => r.date);
+      const dayCounts = analyticsData.cases_by_day.map(r => r.count);
+      new Chart(document.getElementById('chart-cases-day'), {
+        type: 'line',
+        data: {
+          labels: dayLabels,
+          datasets: [{
+            label: 'Cases',
+            data: dayCounts,
+            borderColor: '#3D8B6E',
+            backgroundColor: 'rgba(61,139,110,0.08)',
+            tension: 0.3,
+            fill: true,
+            pointRadius: 3,
+          }],
+        },
+        options: {
+          responsive: true,
+          plugins: { legend: { display: false } },
+          scales: { y: { beginAtZero: true, ticks: { stepSize: 1 } } },
+        },
+      });
+
+      // ── Triage distribution ────────────────────────────────────────────────
+      const triageData = analyticsData.triage_distribution;
+      new Chart(document.getElementById('chart-triage'), {
+        type: 'pie',
+        data: {
+          labels: triageData.map(r => r.color ? r.color.charAt(0).toUpperCase() + r.color.slice(1) : 'Unknown'),
+          datasets: [{
+            data: triageData.map(r => r.count),
+            backgroundColor: triageData.map(r => TRIAGE_COLORS[r.color] ?? '#94A3B8'),
+          }],
+        },
+        options: {
+          responsive: true,
+          plugins: { legend: { position: 'bottom', labels: { font: { size: 11 } } } },
+        },
+      });
+
+      // ── Top complaints ─────────────────────────────────────────────────────
+      new Chart(document.getElementById('chart-complaints'), {
+        type: 'bar',
+        data: {
+          labels: analyticsData.top_complaints.map(r => r.complaint),
+          datasets: [{
+            label: 'Cases',
+            data: analyticsData.top_complaints.map(r => r.count),
+            backgroundColor: '#3D8B6E',
+          }],
+        },
+        options: {
+          indexAxis: 'y',
+          responsive: true,
+          plugins: { legend: { display: false } },
+          scales: { x: { beginAtZero: true, ticks: { stepSize: 1 } } },
+        },
+      });
+
+      // ── Transport mode ─────────────────────────────────────────────────────
+      new Chart(document.getElementById('chart-transport'), {
+        type: 'doughnut',
+        data: {
+          labels: analyticsData.transport_mode_split.map(r => r.mode),
+          datasets: [{
+            data: analyticsData.transport_mode_split.map(r => r.count),
+            backgroundColor: ['#3D8B6E', '#1C1C1E', '#6B7280', '#9CA3AF'],
+          }],
+        },
+        options: {
+          responsive: true,
+          plugins: { legend: { position: 'bottom', labels: { font: { size: 11 } } } },
+        },
+      });
+
+      // ── Outcomes ───────────────────────────────────────────────────────────
+      new Chart(document.getElementById('chart-outcomes'), {
+        type: 'bar',
+        data: {
+          labels: analyticsData.outcomes_summary.map(r => r.status),
+          datasets: [{
+            label: 'Patients',
+            data: analyticsData.outcomes_summary.map(r => r.count),
+            backgroundColor: ['#22C55E', '#3B82F6', '#EF4444', '#F97316'],
+          }],
+        },
+        options: {
+          responsive: true,
+          plugins: { legend: { display: false } },
+          scales: { y: { beginAtZero: true, ticks: { stepSize: 1 } } },
+        },
+      });
+
+      // ── Incident heatmap ───────────────────────────────────────────────────
+      if (analyticsData.locations.length > 0) {
+        const locs = analyticsData.locations;
+        const avgLat = locs.reduce((s, l) => s + l.lat, 0) / locs.length;
+        const avgLon = locs.reduce((s, l) => s + l.lon, 0) / locs.length;
+
+        const map = L.map('incident-map').setView([avgLat, avgLon], 10);
+        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+          attribution: '© OpenStreetMap contributors',
+        }).addTo(map);
+
+        locs.forEach(loc => {
+          L.circleMarker([loc.lat, loc.lon], {
+            radius: 7,
+            fillColor: '#3D8B6E',
+            color: '#2E6D55',
+            weight: 1,
+            opacity: 0.9,
+            fillOpacity: 0.6,
+          }).addTo(map);
+        });
+      }
+
+      // ── CSV Export ─────────────────────────────────────────────────────────
+      document.getElementById('export-csv-btn').addEventListener('click', () => {
+        const sections = [];
+
+        sections.push('CASES PER DAY');
+        sections.push('Date,Count');
+        analyticsData.cases_by_day.forEach(r => sections.push(`${r.date},${r.count}`));
+        sections.push('');
+
+        sections.push('TRIAGE DISTRIBUTION');
+        sections.push('Color,Count');
+        analyticsData.triage_distribution.forEach(r => sections.push(`${r.color},${r.count}`));
+        sections.push('');
+
+        sections.push('TOP COMPLAINTS');
+        sections.push('Complaint,Count');
+        analyticsData.top_complaints.forEach(r => sections.push(`"${r.complaint.replace(/"/g,'""')}",${r.count}`));
+        sections.push('');
+
+        sections.push('TOP QA FLAGS');
+        sections.push('Issue,Count');
+        analyticsData.top_qa_flags.forEach(r => sections.push(`"${r.issue.replace(/"/g,'""')}",${r.count}`));
+        sections.push('');
+
+        sections.push('TRANSPORT MODE SPLIT');
+        sections.push('Mode,Count');
+        analyticsData.transport_mode_split.forEach(r => sections.push(`${r.mode},${r.count}`));
+        sections.push('');
+
+        sections.push('OUTCOMES SUMMARY');
+        sections.push('Status,Count');
+        analyticsData.outcomes_summary.forEach(r => sections.push(`${r.status},${r.count}`));
+        sections.push('');
+
+        sections.push('PCR COMPLETION');
+        sections.push('Total Cases,With PCR,Completion %');
+        const pct = analyticsData.pcr_completion.total_cases > 0
+          ? Math.round((analyticsData.pcr_completion.with_pcr / analyticsData.pcr_completion.total_cases) * 100)
+          : 0;
+        sections.push(`${analyticsData.pcr_completion.total_cases},${analyticsData.pcr_completion.with_pcr},${pct}%`);
+
+        const blob = new Blob([sections.join('\n')], { type: 'text/csv' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `nas-analytics-${new Date().toISOString().slice(0, 10)}.csv`;
+        a.click();
+        URL.revokeObjectURL(url);
+      });
+    }
+  </script>
+</Base>

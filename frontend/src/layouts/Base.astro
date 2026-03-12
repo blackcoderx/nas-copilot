@@ -207,11 +207,15 @@ const role = Astro.cookies.get('nas_role')?.value ?? 'emt';
     <a href={role === 'superadmin' ? '/superadmin' : role === 'admin' ? '/admin' : '/dashboard'} class="nav-brand">NAS<span> Copilot</span></a>
     <div class="nav-links">
       {role === 'superadmin' && (
-        <a href="/superadmin">Super Admin</a>
+        <>
+          <a href="/superadmin">Super Admin</a>
+          <a href="/analytics">Analytics</a>
+        </>
       )}
       {role === 'admin' && (
         <>
           <a href="/admin">Admin Panel</a>
+          <a href="/analytics">Analytics</a>
           <a href="/admin/users/new">Add Staff</a>
         </>
       )}
