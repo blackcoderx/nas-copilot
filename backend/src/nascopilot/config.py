@@ -4,7 +4,9 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8")
 
+    environment: str = "development"
     database_url: str
+    dev_database_url: str = ""
     ollama_base_url: str = "https://ollama.com"
     ollama_model: str = "kimi-k2.5:cloud"
     ollama_api_key: str = ""

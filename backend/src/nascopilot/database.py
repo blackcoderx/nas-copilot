@@ -13,8 +13,13 @@ _SCHEMA = (Path(__file__).parent / "db" / "schema.sql").read_text()
 
 async def init_pool() -> None:
     global _pool
+    dsn = (
+        settings.dev_database_url
+        if settings.environment == "development"
+        else settings.database_url
+    )
     _pool = await asyncpg.create_pool(
-        dsn=settings.database_url,
+        dsn=dsn,
         min_size=1,
         max_size=10,
         statement_cache_size=0,  # required for Neon PgBouncer pooled connections
