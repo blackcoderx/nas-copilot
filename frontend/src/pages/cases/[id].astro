@@ -122,6 +122,13 @@ const triageBgc = triage ? (triageBg[triage.color]    ?? 'var(--surface)')  : ''
             <a href={`${API}/cases/${id}/export`} class="btn btn-outline" target="_blank">
               Export JSON
             </a>
+            <button
+              class="btn"
+              style="background:var(--red-bg); color:var(--red-text); border:1px solid #fecaca;"
+              onclick={`handleDelete('${id}')`}
+            >
+              Delete
+            </button>
           </div>
         </div>
 
@@ -591,9 +598,29 @@ const triageBgc = triage ? (triageBg[triage.color]    ?? 'var(--surface)')  : ''
     });
   }
 
+  async function handleDelete(id: string) {
+    if (!confirm('Delete this case? This cannot be undone.')) return;
+    const errBanner = document.getElementById('action-error')!;
+    errBanner.style.display = 'none';
+    try {
+      const res = await fetch(`${API}/cases/${id}`, { method: 'DELETE', headers: { Authorization: `Bearer ${getToken()}` } });
+      if (res.ok || res.status === 204) {
+        window.location.href = '/dashboard';
+      } else {
+        const err = await res.json().catch(() => ({}));
+        errBanner.textContent = err.detail ?? `Delete failed (${res.status})`;
+        errBanner.style.display = 'block';
+      }
+    } catch (e: any) {
+      errBanner.textContent = e.message ?? 'Could not reach backend';
+      errBanner.style.display = 'block';
+    }
+  }
+
   // expose to inline onclick
   (window as any).handleGenerate = handleGenerate;
   (window as any).handleFinalize = handleFinalize;
+  (window as any).handleDelete = handleDelete;
   (window as any).copyPCR = copyPCR;
   (window as any).copyOutcomeLink = copyOutcomeLink;
 </script>
