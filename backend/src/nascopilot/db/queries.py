@@ -51,7 +51,7 @@ async def insert_case(conn: asyncpg.Connection, data: dict, created_by: str | No
         data["complaint"],
         data.get("allergies"), data.get("current_medications"),
         data.get("past_medical_hx"), data.get("last_oral_intake"), data.get("events_leading"),
-        js(data.get("vitals_set_1")), js(data.get("vitals_set_2")),
+        data.get("vitals_set_1"), data.get("vitals_set_2"),
         data.get("interventions"), data.get("notes"), data.get("crew_names"),
         created_by, outcome_token,
     )
@@ -135,6 +135,27 @@ async def finalize_case(
         *params,
     )
     return dict(row) if row else None
+
+
+async def delete_case(
+    conn: asyncpg.Connection,
+    case_id: UUID,
+    user_id: str | None = None,
+    role: str = "emt",
+    hospital_id: str | None = None,
+) -> bool:
+    if role == "superadmin":
+        where = "id = $1"
+        params = [case_id]
+    elif role == "admin":
+        where = "id = $1 AND created_by IN (SELECT id FROM users WHERE hospital_id = $2)"
+        params = [case_id, hospital_id]
+    else:
+        where = "id = $1 AND created_by = $2"
+        params = [case_id, user_id]
+
+    result = await conn.execute(f"DELETE FROM cases WHERE {where}", *params)
+    return result == "DELETE 1"
 
 
 # ── Generations ───────────────────────────────────────────────────────────────
