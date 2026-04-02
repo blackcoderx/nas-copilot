@@ -93,8 +93,8 @@ class CaseOut(BaseModel):
     past_medical_hx:     str | None
     last_oral_intake:    str | None
     events_leading:      str | None
-    vitals_set_1:        dict | None
-    vitals_set_2:        dict | None
+    vitals_set_1:        dict | str | None
+    vitals_set_2:        dict | str | None
     interventions:       str | None
     notes:               str | None
     crew_names:          str | None
