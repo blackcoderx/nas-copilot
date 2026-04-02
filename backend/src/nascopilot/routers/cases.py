@@ -96,6 +96,19 @@ async def finalize(case_id: UUID, user: dict = Depends(get_current_user)):
     return CaseOut(**row)
 
 
+@router.delete("/{case_id}", status_code=204)
+async def delete_case(case_id: UUID, user: dict = Depends(get_current_user)):
+    async with get_conn() as conn:
+        deleted = await queries.delete_case(
+            conn, case_id,
+            user_id=user["user_id"],
+            role=user["role"],
+            hospital_id=user["hospital_id"],
+        )
+    if not deleted:
+        raise HTTPException(status_code=404, detail="Case not found")
+
+
 @router.get("/{case_id}/export")
 async def export_case(case_id: UUID, user: dict = Depends(get_current_user)):
     async with get_conn() as conn:
