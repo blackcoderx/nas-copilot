@@ -14,7 +14,7 @@ from nascopilot.services.weather import get_weather
 
 
 async def run_generate(conn: asyncpg.Connection, case_id: UUID) -> GenerationOut:
-    case = await queries.get_case(conn, case_id)
+    case = await queries.get_case(conn, case_id, role="superadmin")
     if not case:
         raise ValueError(f"Case {case_id} not found")
 
