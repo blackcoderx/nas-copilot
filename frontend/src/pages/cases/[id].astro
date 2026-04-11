@@ -122,6 +122,9 @@ const triageBgc = triage ? (triageBg[triage.color]    ?? 'var(--surface)')  : ''
             <a href={`${API}/cases/${id}/export`} class="btn btn-outline" target="_blank">
               Export JSON
             </a>
+            <button class="btn btn-outline" onclick="exportCasePDF()">
+              Export PDF
+            </button>
             <button
               class="btn"
               style="background:var(--red-bg); color:var(--red-text); border:1px solid #fecaca;"
@@ -527,6 +530,9 @@ const triageBgc = triage ? (triageBg[triage.color]    ?? 'var(--surface)')  : ''
 </Base>
 
 <script>
+  import { jsPDF } from 'jspdf';
+  import autoTable from 'jspdf-autotable';
+
   const API = import.meta.env.PUBLIC_API_URL ?? 'http://localhost:8000';
 
   function getToken(): string {
@@ -617,10 +623,246 @@ const triageBgc = triage ? (triageBg[triage.color]    ?? 'var(--surface)')  : ''
     }
   }
 
+  async function exportCasePDF() {
+    const token = getToken();
+    const caseId = window.location.pathname.split('/').pop();
+    try {
+      const res = await fetch(`${API}/cases/${caseId}`, { headers: { Authorization: `Bearer ${token}` } });
+      if (!res.ok) { alert('Failed to load case data'); return; }
+      const data = await res.json();
+      const c = data.case;
+      const gen = data.latest_generation;
+
+      const doc = new jsPDF();
+      const pageWidth = doc.internal.pageSize.getWidth();
+
+      doc.setFontSize(18);
+      doc.setFont('helvetica', 'bold');
+      doc.text('NAS Copilot - Patient Care Report', pageWidth / 2, 15, { align: 'center' });
+      doc.setFontSize(10);
+      doc.setFont('helvetica', 'normal');
+      doc.text(`Case ID: ${caseId}  |  Status: ${c.status}  |  Date: ${new Date(c.created_at).toLocaleDateString('en-GB')}`, pageWidth / 2, 22, { align: 'center' });
+      doc.setDrawColor(200);
+      doc.line(14, 26, pageWidth - 14, 26);
+
+      let y = 34;
+
+      doc.setFontSize(12);
+      doc.setFont('helvetica', 'bold');
+      doc.text('Case Information', 14, y);
+      y += 8;
+      doc.setFontSize(10);
+      doc.setFont('helvetica', 'normal');
+      autoTable(doc, {
+        startY: y,
+        head: [['Field', 'Details']],
+        body: [
+          ['Chief Complaint', c.complaint || 'N/A'],
+          ['Pickup Location', c.pickup || 'N/A'],
+          ['Destination', c.destination || 'N/A'],
+          ['Transport Mode', c.transport_mode || 'N/A'],
+        ],
+        theme: 'grid',
+        headStyles: { fillColor: [34, 139, 34] },
+        margin: { left: 14, right: 14 },
+        columnStyles: { 0: { cellWidth: 50 }, 1: { cellWidth: 'auto' } },
+      });
+      y = (doc as any).lastAutoTable.finalY + 10;
+
+      doc.setFontSize(12);
+      doc.setFont('helvetica', 'bold');
+      doc.text('Timeline', 14, y);
+      y += 8;
+      doc.setFontSize(10);
+      doc.setFont('helvetica', 'normal');
+      const timelineRows: any[] = [];
+      if (c.dispatch_time) timelineRows.push(['Dispatch Time', formatDateTime(c.dispatch_time)]);
+      timelineRows.push(['Incident Time', formatDateTime(c.incident_time)]);
+      if (c.on_scene_time) timelineRows.push(['On Scene Time', formatDateTime(c.on_scene_time)]);
+      if (c.hospital_arrival_time) timelineRows.push(['Hospital Arrival', formatDateTime(c.hospital_arrival_time)]);
+      if (c.incident_desc) timelineRows.push(['Incident Description', c.incident_desc]);
+      autoTable(doc, {
+        startY: y,
+        head: [['Event', 'Time / Details']],
+        body: timelineRows,
+        theme: 'grid',
+        headStyles: { fillColor: [34, 139, 34] },
+        margin: { left: 14, right: 14 },
+        columnStyles: { 0: { cellWidth: 50 }, 1: { cellWidth: 'auto' } },
+      });
+      y = (doc as any).lastAutoTable.finalY + 10;
+
+      if (c.age || c.sex) {
+        doc.setFontSize(12);
+        doc.setFont('helvetica', 'bold');
+        doc.text('Patient Demographics', 14, y);
+        y += 8;
+        autoTable(doc, {
+          startY: y,
+          head: [['Field', 'Value']],
+          body: [
+            ['Age', c.age || 'N/A'],
+            ['Sex', c.sex || 'N/A'],
+            ['Weight (kg)', c.weight_kg || 'N/A'],
+          ],
+          theme: 'grid',
+          headStyles: { fillColor: [34, 139, 34] },
+          margin: { left: 14, right: 14 },
+          columnStyles: { 0: { cellWidth: 50 }, 1: { cellWidth: 'auto' } },
+        });
+        y = (doc as any).lastAutoTable.finalY + 10;
+      }
+
+      const vitalsRows: any[] = [];
+      if (c.vitals_set_1) {
+        vitalsRows.push(['Set 1', formatVitals(c.vitals_set_1)]);
+      }
+      if (c.vitals_set_2) {
+        vitalsRows.push(['Set 2', formatVitals(c.vitals_set_2)]);
+      }
+      if (vitalsRows.length > 0) {
+        doc.setFontSize(12);
+        doc.setFont('helvetica', 'bold');
+        doc.text('Vitals', 14, y);
+        y += 8;
+        autoTable(doc, {
+          startY: y,
+          head: [['Set', 'Measurements']],
+          body: vitalsRows,
+          theme: 'grid',
+          headStyles: { fillColor: [34, 139, 34] },
+          margin: { left: 14, right: 14 },
+        });
+        y = (doc as any).lastAutoTable.finalY + 10;
+      }
+
+      if (c.sample_history) {
+        doc.setFontSize(12);
+        doc.setFont('helvetica', 'bold');
+        doc.text('SAMPLE History', 14, y);
+        y += 8;
+        doc.setFontSize(10);
+        doc.setFont('helvetica', 'normal');
+        const sampleRows = [
+          ['S - Symptoms', c.sample_history.symptoms || 'N/A'],
+          ['A - Allergies', c.sample_history.allergies || 'N/A'],
+          ['M - Medications', c.sample_history.medications || 'N/A'],
+          ['P - Past History', c.sample_history.past_history || 'N/A'],
+          ['L - Last Oral Intake', c.sample_history.last_oral_intake || 'N/A'],
+          ['E - Events', c.sample_history.events || 'N/A'],
+        ];
+        autoTable(doc, {
+          startY: y,
+          head: [['Letter', 'Details']],
+          body: sampleRows,
+          theme: 'grid',
+          headStyles: { fillColor: [34, 139, 34] },
+          margin: { left: 14, right: 14 },
+          columnStyles: { 0: { cellWidth: 45 }, 1: { cellWidth: 'auto' } },
+        });
+        y = (doc as any).lastAutoTable.finalY + 10;
+      }
+
+      if (gen) {
+        if (y > 240) { doc.addPage(); y = 20; }
+        doc.setFontSize(12);
+        doc.setFont('helvetica', 'bold');
+        doc.text('AI-Generated PCR', 14, y);
+        y += 8;
+        doc.setFontSize(9);
+        doc.setFont('helvetica', 'normal');
+        const pcrText = gen.pcr_text || 'No PCR generated yet.';
+        const lines = doc.splitTextToSize(pcrText, pageWidth - 28);
+        doc.text(lines, 14, y);
+        y += lines.length * 4 + 6;
+
+        if (gen.triage_json) {
+          if (y > 250) { doc.addPage(); y = 20; }
+          doc.setFontSize(12);
+          doc.setFont('helvetica', 'bold');
+          doc.text('Triage Recommendation', 14, y);
+          y += 8;
+          doc.setFontSize(10);
+          doc.setFont('helvetica', 'normal');
+          autoTable(doc, {
+            startY: y,
+            head: [['Color', 'Recommendation']],
+            body: [[gen.triage_json.color?.toUpperCase() || 'N/A', gen.triage_json.recommendation || 'N/A']],
+            theme: 'grid',
+            headStyles: { fillColor: [34, 139, 34] },
+            margin: { left: 14, right: 14 },
+          });
+          y = (doc as any).lastAutoTable.finalY + 10;
+        }
+
+        if (gen.weather_json) {
+          if (y > 250) { doc.addPage(); y = 20; }
+          doc.setFontSize(12);
+          doc.setFont('helvetica', 'bold');
+          doc.text('Weather Conditions', 14, y);
+          y += 8;
+          const wx = gen.weather_json;
+          autoTable(doc, {
+            startY: y,
+            head: [['Location', 'Condition', 'Temperature', 'Wind']],
+            body: [[
+              'Pickup', wx.pickup?.condition || 'N/A', wx.pickup?.temperature_c ? `${wx.pickup.temperature_c}°C` : 'N/A', wx.pickup?.wind_kmh ? `${wx.pickup.wind_kmh} km/h` : 'N/A'
+            ], [
+              'Destination', wx.destination?.condition || 'N/A', wx.destination?.temperature_c ? `${wx.destination.temperature_c}°C` : 'N/A', wx.destination?.wind_kmh ? `${wx.destination.wind_kmh} km/h` : 'N/A'
+            ]],
+            theme: 'grid',
+            headStyles: { fillColor: [34, 139, 34] },
+            margin: { left: 14, right: 14 },
+          });
+          y = (doc as any).lastAutoTable.finalY + 10;
+        }
+
+        const flags = gen.flags || [];
+        if (flags.length > 0) {
+          if (y > 220) { doc.addPage(); y = 20; }
+          doc.setFontSize(12);
+          doc.setFont('helvetica', 'bold');
+          doc.text('QA Flags', 14, y);
+          y += 8;
+          autoTable(doc, {
+            startY: y,
+            head: [['Severity', 'Issue', 'Corrective Action']],
+            body: flags.map((f: any) => [f.severity?.toUpperCase() || 'N/A', f.issue || 'N/A', f.corrective_action || 'N/A']),
+            theme: 'grid',
+            headStyles: { fillColor: [34, 139, 34] },
+            margin: { left: 14, right: 14 },
+            columnStyles: { 0: { cellWidth: 25 }, 1: { cellWidth: 60 }, 2: { cellWidth: 'auto' } },
+          });
+        }
+      }
+
+      doc.save(`case-${caseId}.pdf`);
+    } catch (e: any) {
+      alert('Failed to export PDF: ' + e.message);
+    }
+  }
+
+  function formatDateTime(iso: string) {
+    return new Date(iso).toLocaleString('en-GB', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' });
+  }
+
+  function formatVitals(v: any) {
+    const parts: string[] = [];
+    if (v.bp_sys != null && v.bp_dia != null) parts.push(`BP ${v.bp_sys}/${v.bp_dia}`);
+    if (v.hr != null) parts.push(`HR ${v.hr}`);
+    if (v.rr != null) parts.push(`RR ${v.rr}`);
+    if (v.spo2 != null) parts.push(`SpO₂ ${v.spo2}%`);
+    if (v.temp_c != null) parts.push(`Temp ${v.temp_c}°C`);
+    if (v.gcs != null) parts.push(`GCS ${v.gcs}`);
+    if (v.pain != null) parts.push(`Pain ${v.pain}/10`);
+    return parts.join('  ·  ') || 'N/A';
+  }
+
   // expose to inline onclick
   (window as any).handleGenerate = handleGenerate;
   (window as any).handleFinalize = handleFinalize;
   (window as any).handleDelete = handleDelete;
   (window as any).copyPCR = copyPCR;
   (window as any).copyOutcomeLink = copyOutcomeLink;
+  (window as any).exportCasePDF = exportCasePDF;
 </script>
